@@ -29,8 +29,7 @@ The `embed` directive's most common use-cases is to embed images.
 An application using the merry compiler as a library can add support for other file types as well.
 
 ### Directive Syntax
-An *n*-indented line beginning with a vertical bar is interpreted
-as a directive invocation. 
+An *n*-indented line beginning with a vertical bar is interpreted as a directive invocation. 
 
 ```text
 | <command name> [args...]

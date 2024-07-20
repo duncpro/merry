@@ -65,17 +65,6 @@ document at the invocation site.
 | embed("fox.jpg")
 ```
 
-#### Make
-
-`make` takes the path to an executable and executes it.
-The executable is expected to write a file extension followed by a colon and
-then the contents of the file to stdout. `make` *may* forgo execution of the file
-if it has not been edited since it was last executed. In either case
-`make` returns a path to the file that was generated most recently.
-
-```md2
-| embed(make("fox_graph.js"))
-```
 
 #### Custom Directives
 In the root directory of the wiki create a `directives.js` file.
@@ -83,17 +72,3 @@ Declare your macros as Javascript functions here.
 There is an implicit `stream` property which is an HTML
 async output stream. There is also a `srcpos` containing
 information about the macro element invocation site. 
-
-### Bulleted Lists
-Bulleted lists are specified by a newline followed by a dash.
-List entries are inline elements, unless they are followed by
-a newline, and four spaces, or alternative a newline and a tab.
-The list entry will continute for the duration of the indentation.
-Lists can be nested in entries, which will of course increase the
-indentation by 4 more.
-
-### Ordered Lists
-Ordered lists are specified a newline followed by a number and then
-a period. Not including a trailing space after the period is a warning.
-If the numbers are not in ascending order that is also a warning.
-
