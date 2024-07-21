@@ -1,8 +1,33 @@
 //! This module provides the facilities needed to construct an *LTree* given
-//! some source text. An *LTree* represents the hierarchical structure of the
-//! source document logically in memory.
+//! some source text. Summarily, an *LTree* represents the hierarchical 
+//! structure of the source text logically in memory. 
+//! 
+//! For every line in the source text there is a node in the *LTree*.
+//! Specifically, for every *contentful lines*, there is a [`ast::Line`] node.
+//! And for every blank line, there is a [`ast::VerticalSpace`] node.
+//! 
+//! However, unlike the flat source text, a document's *LTree* groups these lines
+//! together into *blocks*, and arranges these *blocks* in a hierarchy according
+//! to a few simple rules....
 //!
-//! Constructing an *LTree* is the first-step in parsing an md2 document.
+//! - Lines with the same indentation, not separated by more than one blank line,
+//!   constitute a *block*.
+//! - A non-blank line, not separated by more than one blank line from the preceeding
+//!   *contentful line*, and with a deeper indentation, becomes a child to the preceding line.
+//!   More accurately, the *block* containing the subsequent line, is a child
+//!   of the *block* containing the preceeding line. 
+//! - A *n*-indented line starting with a *list declarator*, begins a new *list element*
+//!   (represented by [`ast::ListElement`]). 
+//! - A *list element* is comprised of a complete *block*, and that *list element* is
+//!   terminated when the *block* it contains is terminated.
+//! - Consecutive *list elements* in the same *block* are grouped into a list
+//!   (represented by [`Ast::List`]).
+//!
+//! Beyond this hierarchy, there is one final and important property of the *LTree*.
+//! That is, recoverability. Given an unmodified *LTree*, the source text can be 
+//! reproduced verbatim\*. Not only the *content* of the document, but the
+//! the original line indentation, and the blank separating lines too.
+
 
 pub mod ast {
     use crate::parse::SourceSpan;
@@ -79,11 +104,11 @@ macro_rules! use_result {
     };
 }
 
-/// Advances the [`Cursor`] past the next *Block* and assembles an [`ast::Block`]
+/// Advances the cursor past the next *block* and assembles an [`ast::Block`]
 /// reprsenting the content.
 /// 
 /// This procedure will *never* return in the middle of a line.
-/// In other words, the caller can assume that the [`Cursor`] is placed
+/// In other words, the caller can assume that the cursor is placed
 /// at the beginning of a subsequent line (or EOF) after `parse` returns.
 fn parse_block<'a, 'b>(ctx: &'a mut ParseContext<'b>, indent: usize) 
 -> ParseResult<ast::Block<'b>>
@@ -91,17 +116,15 @@ fn parse_block<'a, 'b>(ctx: &'a mut ParseContext<'b>, indent: usize)
     let mut node: ast::Block<'b> = <ast::Block as Default>::default();
     let mut consec_blank_line_count: usize = 0;
     let destin: TreeDestin = loop {
+        if ctx.cursor.is_end() { break TreeDestin::Root; }
         if ctx.cursor.match_scan(blank_line()) {
             consec_blank_line_count += 1;
-            if consec_blank_line_count == 2 { break TreeDestin::Root; }
             node.children.push(ast::Node::VerticalSpace(ast::VerticalSpace));
+            if consec_blank_line_count == 2 { break TreeDestin::Root; }
             continue;
         }
         consec_blank_line_count = 0;
         if ctx.cursor.match_scan(nested_block_decl(indent)) {
-            if matches!(node.children.last(), Some(ast::Node::VerticalSpace(_))) {
-                node.children.pop();
-            }
             use_result!(parse_block(ctx, ctx.cursor.pos().colu_pos),
                  |child| node.children.push(ast::Node::Block(child)));
         }
@@ -115,17 +138,14 @@ fn parse_block<'a, 'b>(ctx: &'a mut ParseContext<'b>, indent: usize)
         let line_content = ctx.cursor.pop_line();
         node.children.push(ast::Node::Line(ast::Line { line_content }));
     };
-    if matches!(node.children.last(), Some(ast::Node::VerticalSpace(_))) {
-        node.children.pop();
-    }
     return ParseResult { destin, node };
 }
 
-/// Advances the [`Cursor`] past the next *List* and assembles an [`ast::List`]
+/// Advances the cursor past the next *list* and assembles an [`ast::List`]
 /// to represent the content.
 /// 
 /// This procedure will *never* returns in the middle of line.
-/// In other words, the caller can assume that the [`Cursor`] is placed
+/// In other words, the caller can assume that the cursor is placed
 /// at the beginning of a subsequent line (or EOF) after `parse` returns.
 fn parse_list<'a, 'b>(ctx: &'a mut ParseContext<'b>, level: usize) 
 -> ParseResult<ast::List<'b>>
@@ -154,7 +174,6 @@ scanner! {
 scanner! {
     blank_line () |cursor| {
         cursor.pop_while(|next_char| next_char == ' ');
-        if cursor.is_end() { return true; }
         return cursor.match_char('\n')
     }
 }
