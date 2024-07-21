@@ -101,13 +101,7 @@ impl<'a> ForwardCursor<'a> {
         if !predicate.scan(&mut tmp_cursor) { return false }
         *self = tmp_cursor;
         return true;        
-    }    
-    
-    /// Advances the cursor past the string `s`. If `s` is not subsequent
-    /// to the cursor, this procedure panics and does not advance the cursor.
-    ///
-    /// Use [`match_str`] over this procedure when `s` isn't necessarily next.
-    pub fn advance_str(&mut self, s: &str) { assert!(self.match_str(s)) }
+    }
 
     /// Advances the cursor past the next linebreak and returns a [`SourceSpan`] containing 
     /// the intermediate text (excludes the terminating linebreak). EOF is considered
@@ -121,18 +115,6 @@ impl<'a> ForwardCursor<'a> {
             end = self.pos();
         }
         return SourceSpan { source: self.source, begin, end };
-    }
-
-    /// Advances the cursor past the next `count` unicode characters.
-    pub fn discard_n_chars(&mut self, count: usize) {
-        for _ in 0..count { self.discard_char(); }
-    }
-
-    /// Advances the cursor past the next unicode character.
-    /// Panics if the cursor is already at the end of the source text.
-    pub fn discard_char(&mut self) {
-        let next_char = self.rem().chars().next().unwrap();
-        self.advance_char_assume_next(next_char);
     }
 
     pub fn pos(&self) -> SourceLocation { self.pos }

@@ -1,5 +1,5 @@
 use merry_compiler::ltree::make_ltree;
-use merry_compiler::ltree::ast::Node;
+use merry_compiler::ltree;
 use merry_compiler::assert_matches;
 
 /// Verify that [`make_ltree`] constructs an *LTree* correctly
@@ -14,44 +14,44 @@ use merry_compiler::assert_matches;
 pub fn test_make_ltree() {
     let source = std::fs::read_to_string("tests/simple_list.md2").unwrap();
     let ltree = make_ltree(&source);
-    let block0 = &ltree.children[0];
     
-    assert_matches!(block0.children[0], Node::List(ref family_list));
+    assert_matches!(ltree.children[0], ltree::ast::RootChild::Block(ref block0));
+    assert_matches!(block0.children[0], ltree::ast::BlockChild::List(ref family_list));
     {
         let feline_root = &family_list.children[0].content;
         {
-            assert_matches!(feline_root.children[0], Node::Line(ref line));
+            assert_matches!(feline_root.children[0], ltree::ast::BlockChild::Line(ref line));
             assert_eq!(line.line_content.as_ref(), "Feline");
         }
         {
-            assert_matches!(feline_root.children[1], Node::List(ref species_list));
+            assert_matches!(feline_root.children[1], ltree::ast::BlockChild::List(ref species_list));
             {
                 let housecat_root = &species_list.children[0].content;
-                assert_matches!(housecat_root.children[0], Node::Line(ref line));
+                assert_matches!(housecat_root.children[0], ltree::ast::BlockChild::Line(ref line));
                 assert_eq!(line.line_content.as_ref(), "House Cat");
                 {
-                    assert_matches!(housecat_root.children[1], Node::List(ref individuals_list));
+                    assert_matches!(housecat_root.children[1], ltree::ast::BlockChild::List(ref individuals_list));
                     {
                         let jessie_root = &individuals_list.children[0].content;
-                        assert_matches!(jessie_root.children[0], Node::Line(ref line));
+                        assert_matches!(jessie_root.children[0], ltree::ast::BlockChild::Line(ref line));
                         assert_eq!(line.line_content.as_ref(), "Jessie");
                         assert_eq!(jessie_root.children.len(), 1);
                     }
                     {
                         let stewie_root = &individuals_list.children[1].content;
-                        assert_matches!(stewie_root.children[0], Node::Line(ref line));
+                        assert_matches!(stewie_root.children[0], ltree::ast::BlockChild::Line(ref line));
                         assert_eq!(line.line_content.as_ref(), "Stewie");
                         assert_eq!(stewie_root.children.len(), 1);
                     }
                     {
                         let phoebe_root = &individuals_list.children[2].content;
-                        assert_matches!(phoebe_root.children[0], Node::Line(ref line));
+                        assert_matches!(phoebe_root.children[0], ltree::ast::BlockChild::Line(ref line));
                         assert_eq!(line.line_content.as_ref(), "Phoebe");
                         assert_eq!(phoebe_root.children.len(), 1);
                     }
                     {
                         let titan_root = &individuals_list.children[3].content;
-                        assert_matches!(titan_root.children[0], Node::Line(ref line));
+                        assert_matches!(titan_root.children[0], ltree::ast::BlockChild::Line(ref line));
                         assert_eq!(line.line_content.as_ref(), "Titan");
                         assert_eq!(titan_root.children.len(), 1);
                     }
@@ -66,26 +66,26 @@ pub fn test_make_ltree() {
     {
         let canine_root = &family_list.children[1].content;
         {
-            assert_matches!(canine_root.children[0], Node::Line(ref line));
+            assert_matches!(canine_root.children[0], ltree::ast::BlockChild::Line(ref line));
             assert_eq!(line.line_content.as_ref(), "Canine");
         }
         {
-            assert_matches!(canine_root.children[1], Node::List(ref species_list));
+            assert_matches!(canine_root.children[1], ltree::ast::BlockChild::List(ref species_list));
             {
                 let labrador_root = &species_list.children[0].content;
-                assert_matches!(labrador_root.children[0], Node::Line(ref line));
+                assert_matches!(labrador_root.children[0], ltree::ast::BlockChild::Line(ref line));
                 assert_eq!(line.line_content.as_ref(), "Labrador");
                 {
-                    assert_matches!(labrador_root.children[1], Node::List(ref individuals_list));
+                    assert_matches!(labrador_root.children[1], ltree::ast::BlockChild::List(ref individuals_list));
                     {
                         let cocoa_root = &individuals_list.children[0].content;
-                        assert_matches!(cocoa_root.children[0], Node::Line(ref line));
+                        assert_matches!(cocoa_root.children[0], ltree::ast::BlockChild::Line(ref line));
                         assert_eq!(line.line_content.as_ref(), "Cocoa");
                         assert_eq!(cocoa_root.children.len(), 1);
                     }
                     {
                         let maggie_root = &individuals_list.children[1].content;
-                        assert_matches!(maggie_root.children[0], Node::Line(ref line));
+                        assert_matches!(maggie_root.children[0], ltree::ast::BlockChild::Line(ref line));
                         assert_eq!(line.line_content.as_ref(), "Maggie");
                         assert_eq!(maggie_root.children.len(), 1);
                     }
@@ -95,13 +95,13 @@ pub fn test_make_ltree() {
             }
             {
                 let pit_root = &species_list.children[1].content;
-                assert_matches!(pit_root.children[0], Node::Line(ref line));
+                assert_matches!(pit_root.children[0], ltree::ast::BlockChild::Line(ref line));
                 assert_eq!(line.line_content.as_ref(), "Pit");
                 {
-                    assert_matches!(pit_root.children[1], Node::List(ref individuals_list));
+                    assert_matches!(pit_root.children[1], ltree::ast::BlockChild::List(ref individuals_list));
                     {
                         let layla_root = &individuals_list.children[0].content;
-                        assert_matches!(layla_root.children[0], Node::Line(ref line));
+                        assert_matches!(layla_root.children[0], ltree::ast::BlockChild::Line(ref line));
                         assert_eq!(line.line_content.as_ref(), "Layla");
                         assert_eq!(layla_root.children.len(), 1);
                     }

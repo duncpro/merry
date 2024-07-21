@@ -17,17 +17,17 @@ pub fn test_make_ltree() {
     
     assert_eq!(ltree.children.len(), 1);
 
-    let block0 = &ltree.children[0];
+    assert_matches!(ltree.children[0], ltree::ast::RootChild::Block(ref block0));
     assert_eq!(block0.children.len(), 10);
-    assert_matches!(block0.children[0], ltree::ast::Node::Line(_));
-    assert_matches!(block0.children[1], ltree::ast::Node::Line(_));
-    assert_matches!(block0.children[2], ltree::ast::Node::VerticalSpace(_));
-    assert_matches!(block0.children[3], ltree::ast::Node::Line(_));
-    assert_matches!(block0.children[4], ltree::ast::Node::Line(_));
-    assert_matches!(block0.children[5], ltree::ast::Node::VerticalSpace(_));
-    assert_matches!(block0.children[6], ltree::ast::Node::Line(_));
-    assert_matches!(block0.children[7], ltree::ast::Node::Line(_));
-    assert_matches!(block0.children[8], ltree::ast::Node::Line(_));
-    assert_matches!(block0.children[9], ltree::ast::Node::Line(_));
+    assert_matches!(block0.children[0], ltree::ast::BlockChild::Line(_));
+    assert_matches!(block0.children[1], ltree::ast::BlockChild::Line(_));
+    assert_matches!(block0.children[2], ltree::ast::BlockChild::VerticalSpace(_));
+    assert_matches!(block0.children[3], ltree::ast::BlockChild::Line(_));
+    assert_matches!(block0.children[4], ltree::ast::BlockChild::Line(_));
+    assert_matches!(block0.children[5], ltree::ast::BlockChild::VerticalSpace(_));
+    assert_matches!(block0.children[6], ltree::ast::BlockChild::Line(_));
+    assert_matches!(block0.children[7], ltree::ast::BlockChild::Line(_));
+    assert_matches!(block0.children[8], ltree::ast::BlockChild::Line(_));
+    assert_matches!(block0.children[9], ltree::ast::BlockChild::Line(_));
 }
 
