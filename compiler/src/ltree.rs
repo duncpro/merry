@@ -176,10 +176,6 @@ fn parse_list<'a, 'b>(ctx: &'a mut ParseContext<'b>, level: usize)
 {
     let mut node: ast::List<'b> = <ast::List as Default>::default();
     let destin: TreeDestin = loop {
-        // We can leave this match and not change to at, as long as we
-        // are fine with just not showing the list declarator in the block
-        // quote. We can just pad n spaces to the beginning of the block
-        // for the column number n. I like that.
         if !ctx.cursor.match_scan(list_decl(level)).is_some() { break TreeDestin::Parent; }
         use_result!(parse_block(ctx, level + 3), 
             |content| node.children.push(ast::ListElement { content }));

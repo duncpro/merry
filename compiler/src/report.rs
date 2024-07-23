@@ -154,7 +154,7 @@ pub fn print_issue<'a>(issue: Issue<'a>, source_name: &str) {
     println!("{}", issue.subtext);
 
     println!();
-    println!("at {}:{}", source_name, issue.quote.first_line_no);
+    println!("at {}:{}", source_name, issue.quote.first_line_no + 1);
     let highlight_color = match issue.severity {
         Severity::Error => BG_RED,
         Severity::Warning => BG_YELLOW,
