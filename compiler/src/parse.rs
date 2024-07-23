@@ -1,30 +1,16 @@
 /// The denormalized position of a character in some source text.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct SourceLocation {
-    pub char_pos: usize,
     pub byte_pos: usize,
     pub line_pos: usize,
-    /// The number of unicode characters elapsed since the last
-    /// linebreak. 
-    ///
-    /// Important: This value is **not** suitable for use in error messages
-    /// as it is a measure of unicode characters **not** grapheme clusters.
-    pub colu_pos: usize
+    pub colu_pos: usize,
 }
 
-/// A substring in some source text.
+/// A substring in some source text. 
 pub struct SourceSpan<'a> {
-    source: &'a str,
-    begin: SourceLocation,
-    end: SourceLocation
-}
-
-impl<'a> SourceSpan<'a> {
-    /// Creates a new cursor through the entirety of the source text
-    /// and places it at the end of this [`SourceSpan`].
-    pub fn end<'b>(&'b self) -> ForwardCursor<'a> {
-        ForwardCursor { pos: self.end, source: self.source }
-    }
+    pub source: &'a str,
+    pub begin: SourceLocation,
+    pub end: SourceLocation
 }
 
 impl<'a> AsRef<str> for SourceSpan<'a> {
@@ -42,79 +28,97 @@ impl<'a> std::fmt::Debug for SourceSpan<'a> {
 }
 
 /// A cursor in some source text. 
-/// - Methods beginning with `at` are *peeking*, they do not ever
-///   advance the cursor.
-/// - Methods beginning with `match` are *popping*, they advance
-///   the cursor past the predicate.
+///
+/// - Methods beginning with `at` are *peeking*, they do not advance the cursor.
+/// - Methods beginning with `match` are *popping*, they advance the cursor past
+///   the predicate.
+///
+/// Unlike the string iterators found in the standard library, this cursor tracks
+/// the unicode column index in addition to the line number and byte index.
 #[derive(Clone)]
 pub struct ForwardCursor<'a> {
     pos: SourceLocation,
-    source: &'a str
+    pub source: &'a str
 }
 
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
+
 impl<'a> ForwardCursor<'a> {
-    pub fn peek(&self) -> Option<char> { self.rem().chars().next() }
-
-    pub fn pop(&mut self) -> Option<char> { 
-        let next_char = self.peek()?;
-        self.advance_char_assume_next(next_char);
-        return Some(next_char);
-    }
-
-    pub fn pop_while<'b>(&'b mut self, pred: impl Fn(char) -> bool) 
-    -> SourceSpan<'a> 
-    {
-        let begin = self.pos();
+    /// Advances the cursor until a non-space character is encountered.
+    pub fn pop_spaces<'b>(&'b mut self) -> usize {
+        let mut count: usize = 0;
         loop {
-            let Some(next_char) = self.peek() else { break };
-            if !pred(next_char) { break; }
-            self.advance_char_assume_next(next_char);
+            if self.rem().chars().next() != Some(' ') { break; }
+            self.pos.byte_pos += 1;
+            self.pos.colu_pos += 1;
+            count += 1;
         }
-        return SourceSpan { source: self.source, begin, end: self.pos() };
+        return count;
     }
 
-    /// Checks to see if `pred` occurs subsequent to the cursor.
-    pub fn at_str(&self, pred: &str) -> bool {
-        let end = std::cmp::min(self.source.len(),
-            self.pos.byte_pos + pred.len());
-        let next_str = &self.source[self.pos.byte_pos..end];
-        return next_str == pred;
-    }
+    pub fn peek_spaces<'b>(&'b self) -> usize { self.clone().pop_spaces() }
 
-    pub fn match_str(&mut self, pred: &str) -> bool {
-        if !self.at_str(pred) { return false; }
-        for next_char in pred.chars() {
-            self.advance_char_assume_next(next_char);
+    /// Returns true if and only if `pred` is subsequent to the cursor.
+    pub fn at(&self, pred: &str) -> bool { self.rem().starts_with(pred) }
+
+    /// Advances the cursor past `pred` and returns true. Otherwise, if `pred` is not subsequent
+    /// to the cursor, returns false without advancing.
+    ///
+    /// This procedure will panic if `pred` contains a linebreak. To match a linebreak,
+    /// use the explicit [`match_linebreak`] procedure instead.
+    pub fn match_symbol(&mut self, pred: &str) -> bool {
+        assert!(!pred.contains('\n'));
+        if !self.at(pred) { return false; }
+        for grapheme in pred.graphemes(true) {
+            self.pos.byte_pos += grapheme.len();
+            self.pos.colu_pos += grapheme.width();
         }
         return true;
     }
 
-    pub fn match_char(&mut self, pred: char) -> bool {
-        let Some(next_char) = self.peek() else { return false };
-        if next_char != pred { return false; }
-        self.advance_char_assume_next(next_char);
+    pub fn match_linebreak(&mut self) -> bool {
+        if !self.rem().starts_with('\n') { return false; }
+        self.pos.byte_pos += 1;
+        self.pos.line_pos += 1;
+        self.pos.colu_pos = 0;
         return true;
     }
     
-    pub fn match_scan(&mut self, predicate: impl Scan) -> bool {
+    pub fn match_scan<'b>(&'b mut self, predicate: impl Scan) -> Option<SourceSpan<'a>> {
         let mut tmp_cursor = self.clone();
-        if !predicate.scan(&mut tmp_cursor) { return false }
+        if !predicate.scan(&mut tmp_cursor) { return None }
+        let span = SourceSpan { source: self.source, begin: self.pos(), end: tmp_cursor.pos() };
         *self = tmp_cursor;
-        return true;        
+        return Some(span);        
+    }
+
+    pub fn at_scan(&mut self, predicate: impl Scan) -> Option<SourceSpan<'a>> {
+        let mut tmp_cursor = self.clone();
+        if !predicate.scan(&mut tmp_cursor) { return None; }
+        let span = SourceSpan { source: self.source, begin: self.pos(), end: tmp_cursor.pos() };
+        return Some(span);
     }
 
     /// Advances the cursor past the next linebreak and returns a [`SourceSpan`] containing 
     /// the intermediate text (excludes the terminating linebreak). EOF is considered
     /// a terminating linebreak.
     pub fn pop_line<'b>(&'b mut self) -> SourceSpan<'a> {
-        let begin = self.pos();
-        let mut end = self.pos();
-        loop {
-            let Some(next_char) = self.pop() else { break };
-            if next_char == '\n' { break };
-            end = self.pos();
+        let mut span_end = self.pos();
+        let mut self_end = self.pos();
+        for grapheme in self.rem().graphemes(true) {
+            self_end.byte_pos += grapheme.len();
+            if grapheme == "\n" {
+                self_end.line_pos += 1;
+                self_end.colu_pos = 0;
+                break;
+            }
+            self_end.colu_pos += grapheme.width();
+            span_end = self_end;
         }
-        return SourceSpan { source: self.source, begin, end };
+        let begin = self.pos();
+        self.pos = self_end;
+        return SourceSpan { source: self.source, begin, end: span_end };
     }
 
     pub fn pos(&self) -> SourceLocation { self.pos }
@@ -129,18 +133,7 @@ impl<'a> ForwardCursor<'a> {
 
     // Internal
     
-    fn rem(&self) -> &str { &self.source[self.pos.byte_pos..] }    
-
-    fn advance_char_assume_next(&mut self, next_char: char) {
-        if next_char == '\n' {
-            self.pos.line_pos += 1;
-            self.pos.colu_pos = 0;
-        } else {
-            self.pos.colu_pos += 1;
-        }
-        self.pos.char_pos += 1;
-        self.pos.byte_pos += next_char.len_utf8();
-    }
+    fn rem(&self) -> &str { &self.source[self.pos.byte_pos..] }
 }
 
 pub trait Scan {

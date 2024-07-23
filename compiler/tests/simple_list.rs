@@ -1,6 +1,7 @@
 use merry_compiler::ltree::make_ltree;
 use merry_compiler::ltree;
 use merry_compiler::assert_matches;
+use merry_compiler::ltree::verify_ltree;
 
 /// Verify that [`make_ltree`] constructs an *LTree* correctly
 /// given a document containing only a simple nested list.
@@ -115,4 +116,13 @@ pub fn test_make_ltree() {
     assert_eq!(family_list.children.len(), 2);
     assert_eq!(block0.children.len(), 1);
     assert_eq!(ltree.children.len(), 1);
+}
+
+
+#[test]
+pub fn test_verify_ltree() {
+    let source = std::fs::read_to_string("tests/simple_list.md2").unwrap();
+    let ltree = make_ltree(&source);
+    let warnings = verify_ltree(&ltree);
+     assert!(warnings.is_empty());
 }

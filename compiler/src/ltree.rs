@@ -36,20 +36,24 @@ pub mod ast {
     #[derive(Debug)]
     pub enum RootChild<'a> {
         Block(Block<'a>),
-        VerticalSpace(VerticalSpace)
+        VerticalSpace(VerticalSpace<'a>)
     }
 
-    #[derive(Debug, Default)]
-    pub struct Block<'a> { pub children: Vec<BlockChild<'a>> }    
+    #[derive(Debug)]
+    pub struct Block<'a> { 
+        pub children: Vec<BlockChild<'a>>,
+        pub indent: usize,
+        pub span: SourceSpan<'a>
+    }    
 
     #[derive(Debug)]
-    pub struct VerticalSpace;
+    pub struct VerticalSpace<'a> { pub span: SourceSpan<'a> }
 
     #[derive(Debug)]
     pub enum BlockChild<'a> {
         List(List<'a>),
         Line(Line<'a>),
-        VerticalSpace(VerticalSpace),
+        VerticalSpace(VerticalSpace<'a>),
         Block(Block<'a>)
     }
 
@@ -64,10 +68,13 @@ pub mod ast {
     }
 
     #[derive(Debug)]
-    pub struct Line<'a> { pub line_content: SourceSpan<'a> }
+    pub struct Line<'a> { 
+        pub indent_span: SourceSpan<'a>,
+        pub line_content: SourceSpan<'a> 
+    }
 }
 
-use crate::{parse::ForwardCursor, scanner};
+use crate::parse::{ForwardCursor, SourceSpan};
 
 /// Constructs an *LTree* from the entirety of the given source text. The module-level 
 /// documentation contains an explanation of *LTree*.
@@ -76,8 +83,13 @@ pub fn make_ltree<'a>(source: &'a String) -> ast::Root<'a> {
     let mut root: ast::Root<'a> = <ast::Root as Default>::default();
     loop {
         if ctx.cursor.is_end() { break; }
-        if ctx.cursor.match_scan(blank_line()) { continue; }
-        let block = parse_block(&mut ctx, 0).node;
+        if let Some(line_span) = ctx.cursor.match_scan(blank_line()) { 
+            let vspace = ast::VerticalSpace { span: line_span };
+            root.children.push(ast::RootChild::VerticalSpace(vspace));
+            continue; 
+        }
+        let indent = ctx.cursor.peek_spaces();
+        let block = parse_block(&mut ctx, indent).node;
         root.children.push(ast::RootChild::Block(block));
     }
     return root;
@@ -110,7 +122,7 @@ macro_rules! use_result {
     };
 }
 
-/// Advances the cursor past the next *block* and assembles an [`ast::Block`] reprsenting the
+/// Advances the cursor past the next *block* and assembles an [`ast::Block`] representing the
 /// content.
 /// 
 /// This procedure will *never* return in the middle of a line. In other words, the caller can
@@ -119,31 +131,37 @@ macro_rules! use_result {
 fn parse_block<'a, 'b>(ctx: &'a mut ParseContext<'b>, indent: usize) 
 -> ParseResult<ast::Block<'b>>
 {
-    let mut node: ast::Block<'b> = <ast::Block as Default>::default();
+    let mut children: Vec<ast::BlockChild<'b>> = Vec::new();
     let mut consec_blank_line_count: usize = 0;
-    let destin: TreeDestin = loop {
+    let begin = ctx.cursor.pos();
+    let destin = loop {
         if ctx.cursor.is_end() { break TreeDestin::Root; }
-        if ctx.cursor.match_scan(blank_line()) {
+        if let Some(line_span) = ctx.cursor.match_scan(blank_line()) {
             consec_blank_line_count += 1;
-            node.children.push(ast::BlockChild::VerticalSpace(ast::VerticalSpace));
+            let vspace = ast::VerticalSpace { span: line_span };
+            children.push(ast::BlockChild::VerticalSpace(vspace));
             if consec_blank_line_count == 2 { break TreeDestin::Root; }
             continue;
         }
         consec_blank_line_count = 0;
-        if ctx.cursor.match_scan(nested_block_decl(indent)) {
-            use_result!(parse_block(ctx, ctx.cursor.pos().colu_pos),
-                 |child| node.children.push(ast::BlockChild::Block(child)));
+        if let Some(decl) = ctx.cursor.at_scan(nested_block_decl(indent)) {
+            use_result!(parse_block(ctx, decl.end.colu_pos),
+                 |child| children.push(ast::BlockChild::Block(child)));
         }
-        if !ctx.cursor.match_scan(block_continuation(indent)) {
-            break TreeDestin::Parent;    
-        }
-        if ctx.cursor.at_str("-- ") { 
+        if ctx.cursor.at_scan(list_decl(indent)).is_some() {
             use_result!(parse_list(ctx, indent), 
-                |list| node.children.push(ast::BlockChild::List(list)));
+                |list| children.push(ast::BlockChild::List(list)));
         }
-        let line_content = ctx.cursor.pop_line();
-        node.children.push(ast::BlockChild::Line(ast::Line { line_content }));
+        if let Some(indent_span) = ctx.cursor.match_scan(block_continuation(indent)) {
+            let line_content = ctx.cursor.pop_line();
+            children.push(ast::BlockChild::Line(ast::Line { line_content, indent_span }));
+            continue;
+        }
+        break TreeDestin::Parent;    
     };
+    let end = ctx.cursor.pos();
+    let block_span: SourceSpan<'b> = SourceSpan { source: ctx.cursor.source, begin, end };
+    let node: ast::Block<'b> = ast::Block { children, indent, span: block_span };
     return ParseResult { destin, node };
 }
 
@@ -158,7 +176,11 @@ fn parse_list<'a, 'b>(ctx: &'a mut ParseContext<'b>, level: usize)
 {
     let mut node: ast::List<'b> = <ast::List as Default>::default();
     let destin: TreeDestin = loop {
-        if !ctx.cursor.match_scan(list_decl(level)) { break TreeDestin::Parent; }
+        // We can leave this match and not change to at, as long as we
+        // are fine with just not showing the list declarator in the block
+        // quote. We can just pad n spaces to the beginning of the block
+        // for the column number n. I like that.
+        if !ctx.cursor.match_scan(list_decl(level)).is_some() { break TreeDestin::Parent; }
         use_result!(parse_block(ctx, level + 3), 
             |content| node.children.push(ast::ListElement { content }));
     };
@@ -168,52 +190,56 @@ fn parse_list<'a, 'b>(ctx: &'a mut ParseContext<'b>, level: usize)
 
 // Token Scanners
 
+use crate::scanner;
+
 scanner! { 
+    /// Scans for an *n*-indented *list element declarator*.
     list_decl (indent: usize) |cursor| {
-        cursor.pop_while(|ch| ch == ' ');
+        cursor.pop_spaces();
         if cursor.pos().colu_pos != indent { return false }
-        if !cursor.match_str("-- ") { return false }
+        if !cursor.match_symbol("-- ") { return false }
         return true;
     }
 }
 
 scanner! {
     blank_line () |cursor| {
-        cursor.pop_while(|next_char| next_char == ' ');
-        return cursor.match_char('\n')
+        cursor.pop_spaces();
+        return cursor.match_linebreak();
     }
 }
 
 scanner! {
     nested_block_decl (indent: usize) |cursor| {
-        cursor.pop_while(|ch| ch == ' ');
-        let end = cursor.pos().colu_pos;
-        return end > indent;
+        cursor.pop_spaces();
+        return cursor.pos().colu_pos > indent;
     }
 }
 
 scanner! {
     block_continuation (indent: usize) |cursor| {
-        cursor.pop_while(|ch| ch == ' ');
-        let end = cursor.pos().colu_pos;
-        return end == indent;
+        cursor.pop_spaces();
+        return cursor.pos().colu_pos == indent;
     }
 }
 
 // Verification
 
-pub enum LTreeWarning {
-    /// This warning is raised for any *block* with an indent less than three times
-    /// its nested depth.
+#[derive(Clone, Copy, Debug)]
+pub enum AnyLTreeWarning<'a, 'b> {
+    /// This warning is raised for every *block* that is indented less than three spaces
+    /// past its parent block.
     ///
-    /// Well-formatted source text uses exactly three spaces per level.
-    BreaksIndentConvention,
+    /// The three-space convention aligns child block indentation with child list
+    /// indentation. Hopefully, making the document more readable. 
+    InsufficientIndent(InsufficientIndentWarning<'a, 'b>),
 
-    /// This warning is raised for any *block* with an indent greater than three times
-    /// its nested depth.
+    /// This warning is raised for every *block* that is indented more than three spaces
+    /// past its parent block.
     ///
-    /// Well-formatted source text uses exactly three spaces per level.
-    ExcessiveIndent,
+    /// The three-space convention aligns child block indentation with child list
+    /// indentation. Hopefully, making the document more readable. 
+    ExcessiveIndent(ExcessiveIndentWarning<'a, 'b>),
 
     /// This warning is raised for every *vertical space* which appears in the root.
     ///
@@ -224,8 +250,112 @@ pub enum LTreeWarning {
     /// In an *LTree*, the lineage terminating sequence is associated with the 
     /// most deeply-nested *block*. Therefore, a [`ast::VerticalSpace`] only appears in the
     /// *root* when a sequence of blank lines longer than the terminating sequence is encountered.
-    ExcessiveVerticalSpace,
+    ExcessiveVerticalSpace(ExcessiveVerticalSpaceWarning<'a, 'b>),
 }
 
-pub fn verify_ltree(root: ast::Root) {
+#[derive(Clone, Copy, Debug)]
+pub struct InsufficientIndentWarning<'a, 'b> { 
+    pub expect_indent: usize,
+    pub block: &'a ast::Block<'b>
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ExcessiveIndentWarning<'a, 'b> { 
+    pub expect_indent: usize,
+    pub block: &'a ast::Block<'b>
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ExcessiveVerticalSpaceWarning<'a, 'b> {
+    pub vspace: &'a ast::VerticalSpace<'b>
+}
+
+pub fn verify_ltree<'a, 'b>(root: &'a ast::Root<'b>) -> Vec<AnyLTreeWarning<'a, 'b>> {
+    let mut report: Vec<AnyLTreeWarning<'a, 'b>> = Vec::new();
+    for child in &root.children {
+        match child {
+            ast::RootChild::Block(block) => {
+                verify_block(block, &mut report, 0);
+            },
+            ast::RootChild::VerticalSpace(vspace) => { 
+                let evs_warning = ExcessiveVerticalSpaceWarning { vspace };  
+                report.push(AnyLTreeWarning::ExcessiveVerticalSpace(evs_warning));     
+            },
+        }
+    }
+    return report;
+}
+
+fn verify_block<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTreeWarning<'a, 'b>>,
+    expect_indent: usize) 
+{
+    let actual_indent = block.indent;
+    if actual_indent > expect_indent {
+        let ei_warning = ExcessiveIndentWarning { expect_indent, block };
+        report.push(AnyLTreeWarning::ExcessiveIndent(ei_warning));
+    }
+    if actual_indent < expect_indent {
+        let ii_warning = InsufficientIndentWarning { expect_indent, block };
+        report.push(AnyLTreeWarning::InsufficientIndent(ii_warning));
+    }
+    for child in &block.children {
+        if let ast::BlockChild::Block(child_block) = child {
+            verify_block(child_block, report, block.indent + 3);
+        }
+        if let ast::BlockChild::List(list) = child {
+            for element in &list.children {
+                verify_block(&element.content, report, block.indent + 3);
+            }
+        }
+    }
+}
+
+use crate::report::{Issue, AnnotatedSourceSection, Severity};
+
+impl<'a, 'b> From<AnyLTreeWarning<'a, 'b>> for Issue<'b> {
+    fn from(any: AnyLTreeWarning<'a, 'b>) -> Self {
+        match any {
+            AnyLTreeWarning::InsufficientIndent(spec) => spec.into(),
+            AnyLTreeWarning::ExcessiveIndent(spec) => spec.into(),
+            AnyLTreeWarning::ExcessiveVerticalSpace(spec) => spec.into(),
+        }
+    }
+}
+
+impl<'a, 'b> From<InsufficientIndentWarning<'a, 'b>> for Issue<'b> {
+    fn from(value: InsufficientIndentWarning<'a, 'b>) -> Self {
+        let mut quote = AnnotatedSourceSection::from_span(&value.block.span);
+        quote.extend_up(3);
+        quote.place_barrier_before(value.block.span.begin.line_pos, 0,
+            value.expect_indent, "expected indent in all these columns");
+        quote.limit = Some(value.block.span.begin.line_pos + 3);
+        Issue {
+            quote,
+            title: "Too few spaces before block lines",
+            subtext: "Conventionally, a block's indent is exactly three greater than its parent's.",
+            severity: Severity::Warning,
+        }
+    }
+}
+
+impl<'a, 'b> From<ExcessiveIndentWarning<'a, 'b>> for Issue<'b> {
+    fn from(value: ExcessiveIndentWarning<'a, 'b>) -> Self {
+        let mut quote = AnnotatedSourceSection::from_span(&value.block.span);
+        quote.extend_up(3);
+        quote.place_barrier_before(value.block.span.begin.line_pos, 0,
+            value.expect_indent, "expected indent in these columns alone");
+        quote.limit = Some(value.block.span.begin.line_pos + 3);
+        Issue {
+            quote,
+            title: "Too many spaces before block lines",
+            subtext: "Conventionally, a block's indent is exactly three greater than its parent's.",
+            severity: Severity::Warning,
+        }
+    }
+}
+
+impl<'a, 'b> From<ExcessiveVerticalSpaceWarning<'a, 'b>> for Issue<'b> {
+    fn from(value: ExcessiveVerticalSpaceWarning<'a, 'b>) -> Self {
+        todo!()
+    }
 }

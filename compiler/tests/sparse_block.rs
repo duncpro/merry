@@ -1,5 +1,5 @@
 use merry_compiler::assert_matches;
-use merry_compiler::ltree::make_ltree;
+use merry_compiler::ltree::{make_ltree, verify_ltree};
 use merry_compiler::ltree;
 
 /// This test verifies that [`make_ltree`] constructs a correct *LTree* given
@@ -31,3 +31,10 @@ pub fn test_make_ltree() {
     assert_matches!(block0.children[9], ltree::ast::BlockChild::Line(_));
 }
 
+#[test]
+pub fn test_verify_ltree() {
+    let source = std::fs::read_to_string("tests/sparse_block.md2").unwrap();
+    let ltree = make_ltree(&source);
+    let warnings = verify_ltree(&ltree);
+     assert!(warnings.is_empty());
+}
