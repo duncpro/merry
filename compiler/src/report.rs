@@ -112,7 +112,7 @@ fn print_quote(quote: &AnnotatedSourceSection, highlight_color: &'static str) {
             for _ in 0..barrier.width { print!("-"); }
             println!(" {}", barrier.note);
         }
-        print!("{}| ", pad(&line_no.to_string(), line_no_len));
+        print!("{}| ", pad(&(line_no + 1).to_string(), line_no_len));
         print!("{}", FG_GREY);
         println!("{}", line_text);
         print!("{}", FG_DEFAULT);
@@ -160,4 +160,5 @@ pub fn print_issue<'a>(issue: Issue<'a>, source_name: &str) {
         Severity::Warning => BG_YELLOW,
     };
     print_quote(&issue.quote, highlight_color);
+    println!();
 }

@@ -7,6 +7,7 @@ pub struct SourceLocation {
 }
 
 /// A substring in some source text. 
+#[derive(Clone, Copy)]
 pub struct SourceSpan<'a> {
     pub source: &'a str,
     pub begin: SourceLocation,

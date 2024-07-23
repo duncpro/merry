@@ -46,7 +46,7 @@ pub mod ast {
         pub span: SourceSpan<'a>
     }    
 
-    #[derive(Debug)]
+    #[derive(Clone, Copy, Debug)]
     pub struct VerticalSpace<'a> { pub span: SourceSpan<'a> }
 
     #[derive(Debug)]
@@ -250,7 +250,7 @@ pub enum AnyLTreeWarning<'a, 'b> {
     /// In an *LTree*, the lineage terminating sequence is associated with the 
     /// most deeply-nested *block*. Therefore, a [`ast::VerticalSpace`] only appears in the
     /// *root* when a sequence of blank lines longer than the terminating sequence is encountered.
-    ExcessiveVerticalSpace(ExcessiveVerticalSpaceWarning<'a, 'b>),
+    ExcessiveVerticalSpace(ExcessiveVerticalSpaceWarning<'b>),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -266,23 +266,41 @@ pub struct ExcessiveIndentWarning<'a, 'b> {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct ExcessiveVerticalSpaceWarning<'a, 'b> {
-    pub vspace: &'a ast::VerticalSpace<'b>
+pub struct ExcessiveVerticalSpaceWarning<'a> {
+    pub span: SourceSpan<'a>
 }
 
 pub fn verify_ltree<'a, 'b>(root: &'a ast::Root<'b>) -> Vec<AnyLTreeWarning<'a, 'b>> {
     let mut report: Vec<AnyLTreeWarning<'a, 'b>> = Vec::new();
+    
     for child in &root.children {
-        match child {
-            ast::RootChild::Block(block) => {
-                verify_block(block, &mut report, 0);
-            },
-            ast::RootChild::VerticalSpace(vspace) => { 
-                let evs_warning = ExcessiveVerticalSpaceWarning { vspace };  
-                report.push(AnyLTreeWarning::ExcessiveVerticalSpace(evs_warning));     
-            },
+        if let ast::RootChild::Block(block) = child {
+          verify_block(&block, &mut report, 0);
         }
     }
+
+    let mut vspace_bounds: Option<(VerticalSpace, VerticalSpace)> = None;
+    macro_rules! push_vspace_error { () => {
+        if let Some((first, last)) = vspace_bounds {
+            let span = SourceSpan { source: first.span.source, begin: first.span.begin,
+                end: last.span.end };
+            let evs_warning = ExcessiveVerticalSpaceWarning { span };
+            report.push(AnyLTreeWarning::ExcessiveVerticalSpace(evs_warning));
+         }
+    }}
+    for child in &root.children {
+        if let ast::RootChild::VerticalSpace(vspace) = child {
+            match vspace_bounds {
+                Some((_, ref mut end)) => *end = *vspace,
+                None => vspace_bounds = Some((*vspace, *vspace))
+            }
+            continue;
+        }
+        push_vspace_error!();
+        vspace_bounds = None;
+    }
+    push_vspace_error!();
+    
     return report;
 }
 
@@ -311,6 +329,8 @@ fn verify_block<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTreeWarn
 }
 
 use crate::report::{Issue, AnnotatedSourceSection, Severity};
+
+use self::ast::VerticalSpace;
 
 impl<'a, 'b> From<AnyLTreeWarning<'a, 'b>> for Issue<'b> {
     fn from(any: AnyLTreeWarning<'a, 'b>) -> Self {
@@ -354,8 +374,16 @@ impl<'a, 'b> From<ExcessiveIndentWarning<'a, 'b>> for Issue<'b> {
     }
 }
 
-impl<'a, 'b> From<ExcessiveVerticalSpaceWarning<'a, 'b>> for Issue<'b> {
-    fn from(value: ExcessiveVerticalSpaceWarning<'a, 'b>) -> Self {
-        todo!()
+impl<'a> From<ExcessiveVerticalSpaceWarning<'a>> for Issue<'a> {
+    fn from(value: ExcessiveVerticalSpaceWarning<'a>) -> Self {
+        let mut quote = AnnotatedSourceSection::from_span(&value.span);
+        quote.extend_up(3);
+        quote.extend_down();
+        Issue {
+            quote,
+            title: "Too many blank separator lines",
+            subtext: "Conventionally, a maximum of two consecutive blank lines serve as separator.",
+            severity: Severity::Warning
+        }
     }
 }
