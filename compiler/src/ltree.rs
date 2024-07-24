@@ -75,6 +75,7 @@ pub mod ast {
 }
 
 use crate::parse::{ForwardCursor, SourceSpan};
+use crate::scanner;
 
 /// Constructs an *LTree* from the entirety of the given source text. The module-level 
 /// documentation contains an explanation of *LTree*.
@@ -186,36 +187,32 @@ fn parse_list<'a, 'b>(ctx: &'a mut ParseContext<'b>, level: usize)
 
 // Token Scanners
 
-use crate::scanner;
-
 scanner! { 
-    /// Scans for an *n*-indented *list element declarator*.
     list_decl (indent: usize) |cursor| {
         cursor.pop_spaces();
         if cursor.pos().colu_pos != indent { return false }
-        if !cursor.match_symbol("-- ") { return false }
-        return true;
+        cursor.match_symbol("-- ")
     }
 }
 
 scanner! {
     blank_line () |cursor| {
         cursor.pop_spaces();
-        return cursor.match_linebreak();
+        cursor.match_linebreak()
     }
 }
 
 scanner! {
     nested_block_decl (indent: usize) |cursor| {
         cursor.pop_spaces();
-        return cursor.pos().colu_pos > indent;
+        cursor.pos().colu_pos > indent
     }
 }
 
 scanner! {
     block_continuation (indent: usize) |cursor| {
         cursor.pop_spaces();
-        return cursor.pos().colu_pos == indent;
+        cursor.pos().colu_pos == indent
     }
 }
 
@@ -239,7 +236,7 @@ pub enum AnyLTreeWarning<'a, 'b> {
 
     /// This warning is raised for every *vertical space* which appears in the root.
     ///
-    /// Well-formatted source text contains exactly two vertical spaces between adjacent
+    /// Well-formatted source text contains at most two vertical spaces between sibling
     /// *blocks*. This is the minimum number of vertical spaces required to terminate
     /// the preceeding block. 
     ///
@@ -247,6 +244,10 @@ pub enum AnyLTreeWarning<'a, 'b> {
     /// most deeply-nested *block*. Therefore, a [`ast::VerticalSpace`] only appears in the
     /// *root* when a sequence of blank lines longer than the terminating sequence is encountered.
     ExcessiveVerticalSpace(ExcessiveVerticalSpaceWarning<'b>),
+
+    /// This warning is raised for every child block not separated from its previous
+    /// sibling by a vertical space. 
+    AbruptChildBlock(AbruptChildBlockWarning<'a, 'b>)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -266,6 +267,11 @@ pub struct ExcessiveVerticalSpaceWarning<'a> {
     pub span: SourceSpan<'a>
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct AbruptChildBlockWarning<'a, 'b> {
+    pub child_block: &'a ast::Block<'b>
+}
+
 pub fn verify_ltree<'a, 'b>(root: &'a ast::Root<'b>) -> Vec<AnyLTreeWarning<'a, 'b>> {
     let mut report: Vec<AnyLTreeWarning<'a, 'b>> = Vec::new();
     
@@ -275,7 +281,7 @@ pub fn verify_ltree<'a, 'b>(root: &'a ast::Root<'b>) -> Vec<AnyLTreeWarning<'a, 
         }
     }
 
-    let mut vspace_bounds: Option<(VerticalSpace, VerticalSpace)> = None;
+    let mut vspace_bounds: Option<(ast::VerticalSpace, ast::VerticalSpace)> = None;
     macro_rules! push_vspace_error { () => {
         if let Some((first, last)) = vspace_bounds {
             let span = SourceSpan { source: first.span.source, begin: first.span.begin,
@@ -322,11 +328,15 @@ fn verify_block<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTreeWarn
             }
         }
     }
+    for (i, next) in block.children.iter().skip(1).enumerate() {
+        let ast::BlockChild::Block(ref next_block) = next else { continue };
+        if !matches!(tail(&block.children[i]), ast::BlockChild::Line(_)) { continue; }
+        let acb_warning = AbruptChildBlockWarning { child_block: next_block };
+        report.push(AnyLTreeWarning::AbruptChildBlock(acb_warning));
+    }
 }
 
-use crate::report::{Issue, AnnotatedSourceSection, Severity};
-
-use self::ast::VerticalSpace;
+use crate::report::{Issue, AnnotatedSourceSection, Severity, BarrierStyle};
 
 impl<'a, 'b> From<AnyLTreeWarning<'a, 'b>> for Issue<'b> {
     fn from(any: AnyLTreeWarning<'a, 'b>) -> Self {
@@ -334,6 +344,7 @@ impl<'a, 'b> From<AnyLTreeWarning<'a, 'b>> for Issue<'b> {
             AnyLTreeWarning::InsufficientIndent(spec) => spec.into(),
             AnyLTreeWarning::ExcessiveIndent(spec) => spec.into(),
             AnyLTreeWarning::ExcessiveVerticalSpace(spec) => spec.into(),
+            AnyLTreeWarning::AbruptChildBlock(spec) => spec.into(),
         }
     }
 }
@@ -342,8 +353,9 @@ impl<'a, 'b> From<InsufficientIndentWarning<'a, 'b>> for Issue<'b> {
     fn from(value: InsufficientIndentWarning<'a, 'b>) -> Self {
         let mut quote = AnnotatedSourceSection::from_span(&value.block.span);
         quote.extend_up(3);
-        quote.place_barrier_before(value.block.span.begin.line_pos, 0,
-            value.expect_indent, "expected indent in all these columns");
+        quote.place_barrier_before(value.block.span.begin.line_pos, 
+            BarrierStyle::Ruler(0, value.expect_indent),
+            "expected indent in all these columns");
         quote.limit = Some(value.block.span.begin.line_pos + 3);
         Issue {
             quote,
@@ -358,8 +370,9 @@ impl<'a, 'b> From<ExcessiveIndentWarning<'a, 'b>> for Issue<'b> {
     fn from(value: ExcessiveIndentWarning<'a, 'b>) -> Self {
         let mut quote = AnnotatedSourceSection::from_span(&value.block.span);
         quote.extend_up(3);
-        quote.place_barrier_before(value.block.span.begin.line_pos, 0,
-            value.expect_indent, "expected indent in these columns alone");
+        quote.place_barrier_before(value.block.span.begin.line_pos, 
+            BarrierStyle::Ruler(0, value.expect_indent), 
+            "expected indent in these columns alone");
         quote.limit = Some(value.block.span.begin.line_pos + 3);
         Issue {
             quote,
@@ -382,4 +395,32 @@ impl<'a> From<ExcessiveVerticalSpaceWarning<'a>> for Issue<'a> {
             severity: Severity::Warning
         }
     }
+}
+
+impl<'a, 'b> From<AbruptChildBlockWarning<'a, 'b>> for Issue<'b> {
+    fn from(value: AbruptChildBlockWarning<'a, 'b>) -> Self {
+        let first_line = value.child_block.span.begin.line_pos;
+        let mut quote = AnnotatedSourceSection::from_span(&value.child_block.span);
+        quote.extend_up(1);
+        quote.limit = Some(first_line);
+        quote.place_barrier_before(first_line, BarrierStyle::Placeholder,
+            "expected blank separator line here");
+        Issue {
+            quote,
+            title: "Missing blank separator line",
+            subtext: "Conventionally, a child block is separated from its previous sibling.",
+            severity: Severity::Warning,
+        }
+    }
+}
+
+// Utilities
+
+fn tail<'a, 'b>(root: &'a ast::BlockChild<'b>) -> &'a ast::BlockChild<'b> {
+    if let ast::BlockChild::Block(block) = root {
+        if let Some(child) = block.children.last() {
+            return tail(child);
+        }
+    } 
+    return root;
 }

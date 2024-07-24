@@ -21,10 +21,14 @@ pub struct AnnotatedSourceSection<'a> {
 
 pub struct Highlight { byte_length: usize }
 
+pub enum BarrierStyle {
+    Ruler(/* col: */ usize, /* width: */ usize),
+    Placeholder
+}
+
 pub struct Barrier { 
     note: &'static str,
-    width: usize,
-    col: usize
+    style: BarrierStyle,
 }
 
 impl<'a> AnnotatedSourceSection<'a> {
@@ -86,10 +90,9 @@ impl<'a> AnnotatedSourceSection<'a> {
                 .unwrap_or(self.source.len());
     }
 
-    pub fn place_barrier_before(&mut self, line_no: usize, col: usize,
-        width: usize, note: &'static str) 
+    pub fn place_barrier_before(&mut self, line_no: usize, style: BarrierStyle, note: &'static str) 
     {
-        self.barriers.insert(line_no, Barrier { note, width, col });
+        self.barriers.insert(line_no, Barrier { note, style });
     }
 
     pub fn highlight(&mut self, begin_bpos: usize, end_bpos: usize) {
@@ -107,10 +110,16 @@ fn print_quote(quote: &AnnotatedSourceSection, highlight_color: &'static str) {
     
     let mut line_no = quote.first_line_no;
     for line_text in quote_text.lines() {
-        if let Some(barrier) = quote.barriers.get(&line_no) { 
-            for _ in 0..(line_no_len + 2 + barrier.col) { print!(" "); }
-            for _ in 0..barrier.width { print!("-"); }
-            println!(" {}", barrier.note);
+        if let Some(barrier) = quote.barriers.get(&line_no) {
+            for _ in 0..(line_no_len + 2) { print!(" "); }
+            match barrier.style {
+                BarrierStyle::Ruler(col, width) => {
+                    for _ in 0..col { print!(" "); }
+                    for _ in 0..width { print!("-"); }
+                    println!(" {}", barrier.note);
+                },
+                BarrierStyle::Placeholder => println!("** {} **", barrier.note),
+            }
         }
         print!("{}| ", pad(&(line_no + 1).to_string(), line_no_len));
         print!("{}", FG_GREY);
