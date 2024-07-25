@@ -220,15 +220,9 @@ pub enum AnyLTreeWarning<'a, 'b> {
     /// indentation. Hopefully, making the document more readable. 
     ExcessiveIndent(ExcessiveIndentWarning<'a, 'b>),
 
-    /// This warning is raised for every *vertical space* which appears in the root.
-    ///
-    /// Well-formatted source text contains at most two vertical spaces between sibling
-    /// *blocks*. This is the minimum number of vertical spaces required to terminate
-    /// the preceeding block. 
-    ///
-    /// In an *LTree*, the lineage terminating sequence is associated with the 
-    /// most deeply-nested *block*. Therefore, a [`ast::VerticalSpace`] only appears in the
-    /// *root* when a sequence of blank lines longer than the terminating sequence is encountered.
+    /// This warning is raised for every sequence of redundant *vertical spaces*.
+    /// That is, a sequence of vertical spaces which would have identical interpretation
+    /// if it were shorter.
     ExcessiveVerticalSpace(ExcessiveVerticalSpaceWarning<'b>),
 
     /// This warning is raised for every child block not separated from its previous
