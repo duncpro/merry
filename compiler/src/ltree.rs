@@ -49,7 +49,8 @@ pub mod ast {
         List(List<'a>),
         Line(Line<'a>),
         VerticalSpace(VerticalSpace<'a>),
-        Block(Block<'a>)
+        Block(Block<'a>),
+        Verbatim(Verbatim<'a>)
     }
 
     #[derive(Debug, Default)]
@@ -66,6 +67,12 @@ pub mod ast {
     pub struct Line<'a> { 
         pub indent_span: SourceSpan<'a>,
         pub line_content: SourceSpan<'a> 
+    }
+
+    #[derive(Debug)]
+    pub struct Verbatim<'a> {
+        pub lines: Vec<SourceSpan<'a>>,
+        pub span: SourceSpan<'a>
     }
 }
 
@@ -138,6 +145,10 @@ fn parse_block<'a, 'b>(ctx: &'a mut ParseContext<'b>, indent: usize, depth: usiz
             use_result!(parse_list(ctx, indent, depth), 
                 |list| children.push(ast::BlockChild::List(list)));
         }
+        if ctx.cursor.at_scan(verbatim_decl(indent)).is_some() {
+            children.push(ast::BlockChild::Verbatim(parse_verbatim(ctx, indent)));
+            continue;
+        }
         // TODO: Parse Verbatim blocks.
         if let Some(indent_span) = ctx.cursor.match_scan(block_continuation(indent)) {
             let line_content = ctx.cursor.pop_line();
@@ -158,16 +169,39 @@ fn parse_block<'a, 'b>(ctx: &'a mut ParseContext<'b>, indent: usize, depth: usiz
 /// This procedure will *never* return in the middle of a line. In other words, the caller can
 /// assume that the cursor is placed at the beginning of a subsequent line (or EOF) after
 /// `parse` returns.
-fn parse_list<'a, 'b>(ctx: &'a mut ParseContext<'b>, level: usize, depth: usize) 
+fn parse_list<'a, 'b>(ctx: &'a mut ParseContext<'b>, indent: usize, depth: usize) 
 -> ParseResult<ast::List<'b>>
 {
     let mut node: ast::List<'b> = <ast::List as Default>::default();
     let destin: TreeDestin = loop {
-        if !ctx.cursor.match_scan(list_decl(level)).is_some() { break TreeDestin::Parent; }
-        use_result!(parse_block(ctx, level + 3, depth + 1), 
+        if !ctx.cursor.match_scan(list_decl(indent)).is_some() { break TreeDestin::Parent; }
+        use_result!(parse_block(ctx, indent + 3, depth + 1), 
             |content| node.children.push(ast::ListElement { content }));
     };
     return ParseResult {destin, node };
+}
+
+fn parse_verbatim<'a, 'b>(ctx: &'a mut ParseContext<'b>, indent: usize) -> ast::Verbatim<'b>
+{
+    
+    ctx.cursor.pop_spaces();
+    let mut backtick_count: usize = 0;
+    while ctx.cursor.match_symbol("`") { backtick_count += 1; }
+    ctx.cursor.match_linebreak();
+    loop {
+        // What if the indent is less than we expect?
+        // Do we break the block early?i
+        //
+        // Perhaps better to continue parsing and ignore the wrong indent,
+        // and then report that as an error during the verification stage.
+        // 
+        // Note that the indent beyond what we expect should be considered
+        // part of the verbatim. Only indent less than we expect is problematic.
+        
+         todo!()
+    }
+    
+    todo!()
 }
 
 
@@ -201,6 +235,18 @@ scanner! {
         cursor.pos().colu_pos == indent
     }
 }
+
+scanner! {
+    verbatim_decl (indent: usize) |cursor| {
+        cursor.pop_spaces();
+        if cursor.pos().colu_pos != indent { return false }
+        let mut count: usize = 0;
+        while cursor.match_symbol("`") { count += 1; }
+        if count < 1 { return false; }
+        cursor.match_linebreak()
+    }
+}
+
 
 // Verification
 
@@ -291,18 +337,6 @@ fn verify_block<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTreeWarn
         report.push(AnyLTreeWarning::AbruptChildBlock(acb_warning));
     }
 }
-
-
-    // TODO: Two blank lines is only ever used when necessary.
-    //       Meaning, only when we need to separate two sibling blocks.
-    //       So, we forbid any separation greater than one line, except
-    //       when separation is exactly two AND the tail of the block
-    //       before the vertical space has the same indent as the 
-    //       block following the vertical space.
-    //
-    //       We also need to allow this at the end of lists. Because, we want
-    //       to support a list element, followed by a nested block not in the
-    //       list element.
 
 fn verify_separation<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTreeWarning<'a, 'b>>,
     allow_double_break: bool) 
