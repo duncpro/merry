@@ -86,7 +86,7 @@ impl<'a> AnnotatedSourceSection<'a> {
         self.last_line_end_bpos =
             self.source[(self.last_line_end_bpos + 1)..].bytes()
                 .position(|b| b == '\n' as u8)
-                .map(|bpos| bpos + self.last_line_end_bpos)
+                .map(|bpos| bpos + self.last_line_end_bpos + 1)
                 .unwrap_or(self.source.len());
     }
 

@@ -14,11 +14,8 @@ use merry_compiler::ltree;
 #[test]
 pub fn test_make_ltree() {
     let source = std::fs::read_to_string("tests/simple_blocks.md2").unwrap();
-    let ltree = make_ltree(&source);
-
-    assert_eq!(ltree.children.len(), 1);
-
-    assert_matches!(ltree.children[0], ltree::ast::RootChild::Block(ref block0));    
+    let block0 = make_ltree(&source).block;
+ 
     assert_eq!(block0.children.len(), 7);
     assert_matches!(block0.children[0], ltree::ast::BlockChild::Line(_));
     assert_matches!(block0.children[1], ltree::ast::BlockChild::Line(_));

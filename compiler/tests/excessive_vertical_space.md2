@@ -1,23 +1,37 @@
 Don't get emotional, that ain't like you
 
+   Yesterday's still leaking through the room
 
 
-Yesterday's still leaking through the roof
-
-
-
-That's nothing new
-
+   That's nothing new
+   // In this case, the double break should not raise an ExcessiveVerticalSpaceWarning
+   // because a double break is *the only way* to achieve this behavior. Since,
+   // a single break would simply extend the previous inner block, which is not what
+   // we want. We want a **second** nested block here. Two consecutive nested blocks.
 
 
 I know I promised this is what I wouldn't do
 
 
-
 Somehow giving it the old romantic fool
-
-
 
 
 Seems to better suit the mood
 
+-- So if you wanna walk me to the car 
+   You oughta know I'll have a heavy heart
+-- So can we please be absolutely sure
+
+
+   That there's a mirrorball?
+   // Despite being the same indent level as the list element above, 
+   // this is a actually not a part of that list element's block. 
+   // This is because there is not a single break, but a double break after the
+   // list element.
+   //
+   // So this instead gets interpreted as a nested block in the root.
+   //
+   // In this case, the double break after the list element should not raise
+   // an ExcessiveVerticalSpaceWarning because a double break is *the only way* to achieve 
+   // this behavior. Since, a single break would simply extend the list element, 
+   // which is not what we want. We want a nested block AFTER the list element.

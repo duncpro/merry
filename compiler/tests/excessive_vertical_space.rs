@@ -7,9 +7,9 @@ pub fn test_verify_ltree() {
     let source = std::fs::read_to_string("tests/excessive_vertical_space.md2").unwrap();
     let ltree = make_ltree(&source);
     let warnings = verify_ltree(&ltree);
-    assert_eq!(warnings.len(), 5);
-    for i in 0..5 {
-        assert_matches!(warnings[i], AnyLTreeWarning::ExcessiveVerticalSpace(warning));
-        print_issue(warning.into(), "tests/excessive_vertical_space.md2");
+    for any_warning in &warnings {
+        print_issue((*any_warning).into(), "tests/excessive_vertical_space.md2");
+        assert_matches!(any_warning, AnyLTreeWarning::ExcessiveVerticalSpace(_));
     }
+    assert_eq!(warnings.len(), 3);
 }

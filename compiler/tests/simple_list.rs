@@ -15,8 +15,8 @@ use merry_compiler::ltree::verify_ltree;
 pub fn test_make_ltree() {
     let source = std::fs::read_to_string("tests/simple_list.md2").unwrap();
     let ltree = make_ltree(&source);
-    
-    assert_matches!(ltree.children[0], ltree::ast::RootChild::Block(ref block0));
+
+    let block0 = ltree.block;
     assert_matches!(block0.children[0], ltree::ast::BlockChild::List(ref family_list));
     {
         let feline_root = &family_list.children[0].content;
@@ -115,7 +115,6 @@ pub fn test_make_ltree() {
     }
     assert_eq!(family_list.children.len(), 2);
     assert_eq!(block0.children.len(), 1);
-    assert_eq!(ltree.children.len(), 1);
 }
 
 

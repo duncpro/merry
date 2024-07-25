@@ -30,14 +30,8 @@
 pub mod ast {
     use crate::parse::SourceSpan;
 
-    #[derive(Debug, Default)]
-    pub struct Root<'a> { pub children: Vec<RootChild<'a>> }
-
     #[derive(Debug)]
-    pub enum RootChild<'a> {
-        Block(Block<'a>),
-        VerticalSpace(VerticalSpace<'a>)
-    }
+    pub struct Root<'a> { pub block: Block<'a> }
 
     #[derive(Debug)]
     pub struct Block<'a> { 
@@ -46,6 +40,7 @@ pub mod ast {
         pub span: SourceSpan<'a>
     }    
 
+    // TODO: Remove Clone, Copy
     #[derive(Clone, Copy, Debug)]
     pub struct VerticalSpace<'a> { pub span: SourceSpan<'a> }
 
@@ -81,19 +76,8 @@ use crate::scanner;
 /// documentation contains an explanation of *LTree*.
 pub fn make_ltree<'a>(source: &'a String) -> ast::Root<'a> {
     let mut ctx = ParseContext { cursor: ForwardCursor::new(source) };
-    let mut root: ast::Root<'a> = <ast::Root as Default>::default();
-    loop {
-        if ctx.cursor.is_end() { break; }
-        if let Some(line_span) = ctx.cursor.match_scan(blank_line()) { 
-            let vspace = ast::VerticalSpace { span: line_span };
-            root.children.push(ast::RootChild::VerticalSpace(vspace));
-            continue; 
-        }
-        let indent = ctx.cursor.peek_spaces();
-        let block = parse_block(&mut ctx, indent).node;
-        root.children.push(ast::RootChild::Block(block));
-    }
-    return root;
+    let block = parse_block(&mut ctx, 0, 0).node;
+    return ast::Root { block };
 }
 
 
@@ -129,30 +113,33 @@ macro_rules! use_result {
 /// This procedure will *never* return in the middle of a line. In other words, the caller can
 /// assume that the cursor is placed at the beginning of a subsequent line (or EOF) after `parse`
 /// returns.
-fn parse_block<'a, 'b>(ctx: &'a mut ParseContext<'b>, indent: usize) 
+fn parse_block<'a, 'b>(ctx: &'a mut ParseContext<'b>, indent: usize, depth: usize) 
 -> ParseResult<ast::Block<'b>>
 {
     let mut children: Vec<ast::BlockChild<'b>> = Vec::new();
-    let mut consec_blank_line_count: usize = 0;
     let begin = ctx.cursor.pos();
     let destin = loop {
-        if ctx.cursor.is_end() { break TreeDestin::Root; }
-        if let Some(line_span) = ctx.cursor.match_scan(blank_line()) {
+        let mut consec_blank_line_count: usize = 0;
+        while let Some(line_span) = ctx.cursor.match_scan(blank_line()) {
             consec_blank_line_count += 1;
             let vspace = ast::VerticalSpace { span: line_span };
             children.push(ast::BlockChild::VerticalSpace(vspace));
-            if consec_blank_line_count == 2 { break TreeDestin::Root; }
-            continue;
         }
-        consec_blank_line_count = 0;
+        if depth > 0 {
+            if consec_blank_line_count > 2 { break TreeDestin::Root };
+            if consec_blank_line_count == 2 { break TreeDestin::Parent; }
+        }
+        if ctx.cursor.is_end() { break TreeDestin::Root; }
         if let Some(decl) = ctx.cursor.at_scan(nested_block_decl(indent)) {
-            use_result!(parse_block(ctx, decl.end.colu_pos),
+            use_result!(parse_block(ctx, decl.end.colu_pos, depth + 1),
                  |child| children.push(ast::BlockChild::Block(child)));
         }
         if ctx.cursor.at_scan(list_decl(indent)).is_some() {
-            use_result!(parse_list(ctx, indent), 
+            use_result!(parse_list(ctx, indent, depth), 
                 |list| children.push(ast::BlockChild::List(list)));
         }
+        // TODO: Parse Verbatim blocks.
+        // TODO: Parse comment lines (?).
         if let Some(indent_span) = ctx.cursor.match_scan(block_continuation(indent)) {
             let line_content = ctx.cursor.pop_line();
             children.push(ast::BlockChild::Line(ast::Line { line_content, indent_span }));
@@ -172,13 +159,13 @@ fn parse_block<'a, 'b>(ctx: &'a mut ParseContext<'b>, indent: usize)
 /// This procedure will *never* return in the middle of a line. In other words, the caller can
 /// assume that the cursor is placed at the beginning of a subsequent line (or EOF) after
 /// `parse` returns.
-fn parse_list<'a, 'b>(ctx: &'a mut ParseContext<'b>, level: usize) 
+fn parse_list<'a, 'b>(ctx: &'a mut ParseContext<'b>, level: usize, depth: usize) 
 -> ParseResult<ast::List<'b>>
 {
     let mut node: ast::List<'b> = <ast::List as Default>::default();
     let destin: TreeDestin = loop {
         if !ctx.cursor.match_scan(list_decl(level)).is_some() { break TreeDestin::Parent; }
-        use_result!(parse_block(ctx, level + 3), 
+        use_result!(parse_block(ctx, level + 3, depth + 1), 
             |content| node.children.push(ast::ListElement { content }));
     };
     return ParseResult {destin, node };
@@ -264,7 +251,8 @@ pub struct ExcessiveIndentWarning<'a, 'b> {
 
 #[derive(Clone, Copy, Debug)]
 pub struct ExcessiveVerticalSpaceWarning<'a> {
-    pub span: SourceSpan<'a>
+    pub span: SourceSpan<'a>,
+    pub limit: usize
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -274,39 +262,84 @@ pub struct AbruptChildBlockWarning<'a, 'b> {
 
 pub fn verify_ltree<'a, 'b>(root: &'a ast::Root<'b>) -> Vec<AnyLTreeWarning<'a, 'b>> {
     let mut report: Vec<AnyLTreeWarning<'a, 'b>> = Vec::new();
-    
-    for child in &root.children {
-        if let ast::RootChild::Block(block) = child {
-          verify_block(&block, &mut report, 0);
-        }
-    }
-
-    let mut vspace_bounds: Option<(ast::VerticalSpace, ast::VerticalSpace)> = None;
-    macro_rules! push_vspace_error { () => {
-        if let Some((first, last)) = vspace_bounds {
-            let span = SourceSpan { source: first.span.source, begin: first.span.begin,
-                end: last.span.end };
-            let evs_warning = ExcessiveVerticalSpaceWarning { span };
-            report.push(AnyLTreeWarning::ExcessiveVerticalSpace(evs_warning));
-         }
-    }}
-    for child in &root.children {
-        if let ast::RootChild::VerticalSpace(vspace) = child {
-            match vspace_bounds {
-                Some((_, ref mut end)) => *end = *vspace,
-                None => vspace_bounds = Some((*vspace, *vspace))
-            }
-            continue;
-        }
-        push_vspace_error!();
-        vspace_bounds = None;
-    }
-    push_vspace_error!();
-    
+    verify_separation(&root.block, &mut report, false);
+    verify_block(&root.block, &mut report, 0);  
     return report;
 }
 
 fn verify_block<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTreeWarning<'a, 'b>>,
+    expect_indent: usize) 
+{
+    verify_indent(block, report, expect_indent);
+
+    let mut prev_child: Option<&'a ast::BlockChild<'b>> = None;
+    for child in &block.children {
+        if let ast::BlockChild::Block(child_block) = child {
+            verify_block(child_block, report, block.indent + 3);
+            let mut allow_double_break = false;
+            if let Some(ast::BlockChild::Block(prev_block)) = prev_child {
+                allow_double_break = 
+                    tail_block(prev_block).indent == child_block.indent;
+            }
+            verify_separation(child_block, report, allow_double_break);
+        }
+        if let ast::BlockChild::List(list) = child {
+            for element in &list.children {
+                verify_block(&element.content, report, block.indent + 3);
+            }
+        }
+        prev_child = Some(child);
+    }
+    
+    for (i, next) in block.children.iter().skip(1).enumerate() {
+        let ast::BlockChild::Block(ref next_block) = next else { continue };
+        if !matches!(tail(&block.children[i]), ast::BlockChild::Line(_)) { continue; }
+        let acb_warning = AbruptChildBlockWarning { child_block: next_block };
+        report.push(AnyLTreeWarning::AbruptChildBlock(acb_warning));
+    }
+}
+
+
+    // TODO: Two blank lines is only ever used when necessary.
+    //       Meaning, only when we need to separate two sibling blocks.
+    //       So, we forbid any separation greater than one line, except
+    //       when separation is exactly two AND the tail of the block
+    //       before the vertical space has the same indent as the 
+    //       block following the vertical space.
+    //
+    //       We also need to allow this at the end of lists. Because, we want
+    //       to support a list element, followed by a nested block not in the
+    //       list element.
+
+fn verify_separation<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTreeWarning<'a, 'b>>,
+    allow_double_break: bool) 
+{
+    let mut vspace_bounds: Option<(ast::VerticalSpace, ast::VerticalSpace)> = None;
+    macro_rules! push_vspace_error { ($tail_call:expr) => {
+        if let Some((first, last)) = vspace_bounds.take() {
+            let limit = if $tail_call && allow_double_break { 2 } else { 1 };
+            if last.span.end.line_pos - first.span.begin.line_pos > limit {
+                let span = SourceSpan { source: first.span.source,
+                    begin: first.span.begin, end: last.span.begin };
+                let evs_warning = ExcessiveVerticalSpaceWarning { span, limit };
+                report.push(AnyLTreeWarning::ExcessiveVerticalSpace(evs_warning));
+            }
+         }
+    }}
+    for child in &block.children {
+        if let ast::BlockChild::VerticalSpace(vspace) = child {
+            match vspace_bounds {
+                Some((_, ref mut end)) => *end = *vspace,
+                None => vspace_bounds = Some((*vspace, *vspace)),
+            }
+            continue;
+        } 
+        push_vspace_error!(/* tail_call = */ false);
+     } 
+     push_vspace_error!(/* tail_call = */ true);
+ } 
+
+fn verify_indent<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTreeWarning<'a, 'b>>,
     expect_indent: usize) 
 {
     let actual_indent = block.indent;
@@ -317,22 +350,6 @@ fn verify_block<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTreeWarn
     if actual_indent < expect_indent {
         let ii_warning = InsufficientIndentWarning { expect_indent, block };
         report.push(AnyLTreeWarning::InsufficientIndent(ii_warning));
-    }
-    for child in &block.children {
-        if let ast::BlockChild::Block(child_block) = child {
-            verify_block(child_block, report, block.indent + 3);
-        }
-        if let ast::BlockChild::List(list) = child {
-            for element in &list.children {
-                verify_block(&element.content, report, block.indent + 3);
-            }
-        }
-    }
-    for (i, next) in block.children.iter().skip(1).enumerate() {
-        let ast::BlockChild::Block(ref next_block) = next else { continue };
-        if !matches!(tail(&block.children[i]), ast::BlockChild::Line(_)) { continue; }
-        let acb_warning = AbruptChildBlockWarning { child_block: next_block };
-        report.push(AnyLTreeWarning::AbruptChildBlock(acb_warning));
     }
 }
 
@@ -386,12 +403,14 @@ impl<'a, 'b> From<ExcessiveIndentWarning<'a, 'b>> for Issue<'b> {
 impl<'a> From<ExcessiveVerticalSpaceWarning<'a>> for Issue<'a> {
     fn from(value: ExcessiveVerticalSpaceWarning<'a>) -> Self {
         let mut quote = AnnotatedSourceSection::from_span(&value.span);
-        quote.extend_up(3);
+        quote.extend_up(1);
         quote.extend_down();
+        quote.place_barrier_before(value.span.begin.line_pos + value.limit, 
+            BarrierStyle::Placeholder, "blank lines could've ended here");
         Issue {
             quote,
             title: "Too many blank separator lines",
-            subtext: "Conventionally, a maximum of two consecutive blank lines serve as separator.",
+            subtext: "A lesser number of linebreaks has equivalent interpretation.",
             severity: Severity::Warning
         }
     }
@@ -408,7 +427,7 @@ impl<'a, 'b> From<AbruptChildBlockWarning<'a, 'b>> for Issue<'b> {
         Issue {
             quote,
             title: "Missing blank separator line",
-            subtext: "Conventionally, a child block is separated from its previous sibling.",
+            subtext: "Conventionally, a child block is separated from its parent by a blank line.",
             severity: Severity::Warning,
         }
     }
@@ -420,6 +439,26 @@ fn tail<'a, 'b>(root: &'a ast::BlockChild<'b>) -> &'a ast::BlockChild<'b> {
     if let ast::BlockChild::Block(block) = root {
         if let Some(child) = block.children.last() {
             return tail(child);
+        }
+    } 
+    if let ast::BlockChild::List(list) = root {
+        if let Some(child) = list.children.last() {
+            if let Some(grandchild) = child.content.children.last() {
+               return tail(grandchild);
+            } 
+        }
+    } 
+    return root;
+}
+
+fn tail_block<'a, 'b>(root: &'a ast::Block<'b>) -> &'a ast::Block<'b> {
+    let Some(last) = root.children.last() else { return root; };
+    if let ast::BlockChild::Block(child_block) = last {
+        return tail_block(child_block);
+    }
+    if let ast::BlockChild::List(list) = last {
+        if let Some(child_element) = list.children.last() {
+            return tail_block(&child_element.content);
         }
     } 
     return root;

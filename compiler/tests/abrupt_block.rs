@@ -7,9 +7,9 @@ pub fn test_verify_ltree() {
     let source = std::fs::read_to_string("tests/abrupt_block.md2").unwrap();
     let ltree = make_ltree(&source);
     let warnings = verify_ltree(&ltree);
-    assert_eq!(warnings.len(), 2);
-    for i in 0..2 {
-        assert_matches!(warnings[i], AnyLTreeWarning::AbruptChildBlock(warning));
-        print_issue(warning.into(), "tests/abrupt_block.md2");
+     for any_warning in &warnings {
+        print_issue((*any_warning).into(), "tests/abrupt_block.md2");
+        assert_matches!(any_warning, AnyLTreeWarning::AbruptChildBlock(_));
     }
+    assert_eq!(warnings.len(), 2);
 }
