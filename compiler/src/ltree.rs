@@ -38,7 +38,7 @@ pub mod ast {
         pub children: Vec<BlockChild<'a>>,
         pub indent: usize,
         pub span: SourceSpan<'a>
-    }    
+    } 
 
     // TODO: Remove Clone, Copy
     #[derive(Clone, Copy, Debug)]
@@ -139,7 +139,6 @@ fn parse_block<'a, 'b>(ctx: &'a mut ParseContext<'b>, indent: usize, depth: usiz
                 |list| children.push(ast::BlockChild::List(list)));
         }
         // TODO: Parse Verbatim blocks.
-        // TODO: Parse comment lines (?).
         if let Some(indent_span) = ctx.cursor.match_scan(block_continuation(indent)) {
             let line_content = ctx.cursor.pop_line();
             children.push(ast::BlockChild::Line(ast::Line { line_content, indent_span }));
@@ -293,7 +292,7 @@ fn verify_block<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTreeWarn
     
     for (i, next) in block.children.iter().skip(1).enumerate() {
         let ast::BlockChild::Block(ref next_block) = next else { continue };
-        if !matches!(tail(&block.children[i]), ast::BlockChild::Line(_)) { continue; }
+        if matches!(tail(&block.children[i]), ast::BlockChild::VerticalSpace(_)) { continue; }
         let acb_warning = AbruptChildBlockWarning { child_block: next_block };
         report.push(AnyLTreeWarning::AbruptChildBlock(acb_warning));
     }
