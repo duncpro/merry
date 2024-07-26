@@ -9,9 +9,9 @@
 //! However, unlike the flat source text, a document's *LTree* groups these lines together into
 //! *blocks*, and arranges these *blocks* in a hierarchy according to a few simple rules....
 //!
-//! - Lines with the same indentation, not separated by more than one blank line, constitute a
+//! - Lines with the same indentation, not seperated by more than one blank line, constitute a
 //!   *block*.
-//! - A non-blank line, not separated by more than one blank line from the preceeding
+//! - A non-blank line, not seperated by more than one blank line from the preceeding
 //!   *contentful line*, and with a deeper indentation, becomes a child to the preceding line.
 //!   More accurately, the *block* containing the subsequent line, is a child
 //!   of the *block* containing the preceeding line. 
@@ -28,7 +28,7 @@
 //! and the blank separating lines too.
 
 pub mod ast {
-    use crate::parse::SourceSpan;
+    use crate::scan::SourceSpan;
 
     #[derive(Debug)]
     pub struct Root<'a> { pub block: Block<'a> }
@@ -72,11 +72,13 @@ pub mod ast {
     #[derive(Debug)]
     pub struct Verbatim<'a> {
         pub lines: Vec<SourceSpan<'a>>,
-        pub span: SourceSpan<'a>
+        pub tail: Option<SourceSpan<'a>>,
+        pub span: SourceSpan<'a>,
+        pub indent: usize
     }
 }
 
-use crate::parse::{ForwardCursor, SourceSpan};
+use crate::scan::{ForwardCursor, SourceSpan};
 use crate::scanner;
 
 /// Constructs an *LTree* from the entirety of the given source text. The module-level 
@@ -149,7 +151,6 @@ fn parse_block<'a, 'b>(ctx: &'a mut ParseContext<'b>, indent: usize, depth: usiz
             children.push(ast::BlockChild::Verbatim(parse_verbatim(ctx, indent)));
             continue;
         }
-        // TODO: Parse Verbatim blocks.
         if let Some(indent_span) = ctx.cursor.match_scan(block_continuation(indent)) {
             let line_content = ctx.cursor.pop_line();
             children.push(ast::BlockChild::Line(ast::Line { line_content, indent_span }));
@@ -181,27 +182,34 @@ fn parse_list<'a, 'b>(ctx: &'a mut ParseContext<'b>, indent: usize, depth: usize
     return ParseResult {destin, node };
 }
 
-fn parse_verbatim<'a, 'b>(ctx: &'a mut ParseContext<'b>, indent: usize) -> ast::Verbatim<'b>
-{
-    
-    ctx.cursor.pop_spaces();
-    let mut backtick_count: usize = 0;
-    while ctx.cursor.match_symbol("`") { backtick_count += 1; }
-    ctx.cursor.match_linebreak();
+fn parse_verbatim<'a, 'b>(ctx: &'a mut ParseContext<'b>, indent: usize) -> ast::Verbatim<'b> {
+    let begin = ctx.cursor.pos();
+    assert_eq!(ctx.cursor.pop_spaces().end.colu_pos, indent);
+    let start_backtick_count: usize = ctx.cursor.repeat_match_symbol("`");
+    assert!(ctx.cursor.match_linebreak());
+    let mut lines: Vec<SourceSpan<'b>> = Vec::new();
+    let mut tail: Option<SourceSpan<'b>> = None;
     loop {
-        // What if the indent is less than we expect?
-        // Do we break the block early?i
-        //
-        // Perhaps better to continue parsing and ignore the wrong indent,
-        // and then report that as an error during the verification stage.
-        // 
-        // Note that the indent beyond what we expect should be considered
-        // part of the verbatim. Only indent less than we expect is problematic.
-        
-         todo!()
+        let mut actual_indent: usize = 0;
+        loop {
+            // Whitespace beyond the expected indent is interpreted verbatim.
+            if actual_indent == indent { break; }
+            // The the indent ends prematurely, we'll begin the verbatim early,
+            // however this will be reported as an issue during the verification step.
+            if !ctx.cursor.match_symbol(" ") { break; }
+            actual_indent += 1;
+        }
+        if ctx.cursor.is_end() { break; }
+        if let Some(span) = ctx.cursor.match_scan(verbatim_end(start_backtick_count)) {
+            tail = Some(span);
+            // TODO: Parse trailing qualifier
+            break;
+        }
+        lines.push(ctx.cursor.pop_line());
     }
-    
-    todo!()
+    let end = ctx.cursor.pos();
+    let span = SourceSpan { source: ctx.cursor.source, begin, end };
+    return ast::Verbatim { span, lines, tail, indent };
 }
 
 
@@ -240,10 +248,15 @@ scanner! {
     verbatim_decl (indent: usize) |cursor| {
         cursor.pop_spaces();
         if cursor.pos().colu_pos != indent { return false }
-        let mut count: usize = 0;
-        while cursor.match_symbol("`") { count += 1; }
-        if count < 1 { return false; }
+        if cursor.repeat_match_symbol("`") < 1 { return false; }
         cursor.match_linebreak()
+    }
+}
+
+scanner! {
+    verbatim_end (expect_backtick_count: usize) |cursor| {
+        let actual_backtick_count = cursor.repeat_match_symbol("`");
+        return actual_backtick_count >= expect_backtick_count;
     }
 }
 
@@ -271,9 +284,13 @@ pub enum AnyLTreeWarning<'a, 'b> {
     /// if it were shorter.
     ExcessiveVerticalSpace(ExcessiveVerticalSpaceWarning<'b>),
 
-    /// This warning is raised for every child block not separated from its previous
+    /// This warning is raised for every child block not seperated from its previous
     /// sibling by a vertical space. 
-    AbruptChildBlock(AbruptChildBlockWarning<'a, 'b>)
+    AbruptChildBlock(AbruptChildBlockWarning<'a, 'b>),
+
+    UnclosedVerbatim(UnclosedVerbatimWarning<'a, 'b>),
+
+    VerbatimUnderindented(VerbatimUnderindentedWarning<'a, 'b>)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -299,9 +316,19 @@ pub struct AbruptChildBlockWarning<'a, 'b> {
     pub child_block: &'a ast::Block<'b>
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct UnclosedVerbatimWarning<'a, 'b> {
+    verbatim: &'a ast::Verbatim<'b>
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct VerbatimUnderindentedWarning<'a, 'b> {
+    verbatim: &'a ast::Verbatim<'b>
+}
+
 pub fn verify_ltree<'a, 'b>(root: &'a ast::Root<'b>) -> Vec<AnyLTreeWarning<'a, 'b>> {
     let mut report: Vec<AnyLTreeWarning<'a, 'b>> = Vec::new();
-    verify_separation(&root.block, &mut report, false);
+    verify_seperation(&root.block, &mut report, false);
     verify_block(&root.block, &mut report, 0);  
     return report;
 }
@@ -309,7 +336,7 @@ pub fn verify_ltree<'a, 'b>(root: &'a ast::Root<'b>) -> Vec<AnyLTreeWarning<'a, 
 fn verify_block<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTreeWarning<'a, 'b>>,
     expect_indent: usize) 
 {
-    verify_indent(block, report, expect_indent);
+    verify_block_indent(block, report, expect_indent);
 
     let mut prev_child: Option<&'a ast::BlockChild<'b>> = None;
     for child in &block.children {
@@ -320,12 +347,15 @@ fn verify_block<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTreeWarn
                 allow_double_break = 
                     tail_block(prev_block).indent == child_block.indent;
             }
-            verify_separation(child_block, report, allow_double_break);
+            verify_seperation(child_block, report, allow_double_break);
         }
         if let ast::BlockChild::List(list) = child {
             for element in &list.children {
                 verify_block(&element.content, report, block.indent + 3);
             }
+        }
+        if let ast::BlockChild::Verbatim(verbatim) = child {
+            verify_verbatim(verbatim, report);
         }
         prev_child = Some(child);
     }
@@ -338,7 +368,7 @@ fn verify_block<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTreeWarn
     }
 }
 
-fn verify_separation<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTreeWarning<'a, 'b>>,
+fn verify_seperation<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTreeWarning<'a, 'b>>,
     allow_double_break: bool) 
 {
     let mut vspace_bounds: Option<(ast::VerticalSpace, ast::VerticalSpace)> = None;
@@ -366,7 +396,7 @@ fn verify_separation<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTre
      push_vspace_error!(/* tail_call = */ true);
  } 
 
-fn verify_indent<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTreeWarning<'a, 'b>>,
+fn verify_block_indent<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTreeWarning<'a, 'b>>,
     expect_indent: usize) 
 {
     let actual_indent = block.indent;
@@ -380,6 +410,30 @@ fn verify_indent<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTreeWar
     }
 }
 
+fn verify_verbatim<'a, 'b>(verbatim: &'a ast::Verbatim<'b>, 
+    report: &mut Vec<AnyLTreeWarning<'a, 'b>>) 
+{
+    let mut inconsistent_indent = false;
+    for line in &verbatim.lines {
+        if line.begin.colu_pos == verbatim.indent { continue };
+        inconsistent_indent = true;
+        break;
+    }
+    if let Some(end_span) = verbatim.tail {
+        if end_span.begin.colu_pos != verbatim.indent {
+            inconsistent_indent = true;
+        }
+    }
+    if inconsistent_indent {
+        let warning = VerbatimUnderindentedWarning { verbatim };
+        report.push(AnyLTreeWarning::VerbatimUnderindented(warning));
+    }
+    if verbatim.tail.is_none() {
+        let warning = UnclosedVerbatimWarning { verbatim };
+        report.push(AnyLTreeWarning::UnclosedVerbatim(warning));
+    }
+}
+
 use crate::report::{Issue, AnnotatedSourceSection, Severity, BarrierStyle};
 
 impl<'a, 'b> From<AnyLTreeWarning<'a, 'b>> for Issue<'b> {
@@ -389,6 +443,8 @@ impl<'a, 'b> From<AnyLTreeWarning<'a, 'b>> for Issue<'b> {
             AnyLTreeWarning::ExcessiveIndent(spec) => spec.into(),
             AnyLTreeWarning::ExcessiveVerticalSpace(spec) => spec.into(),
             AnyLTreeWarning::AbruptChildBlock(spec) => spec.into(),
+            AnyLTreeWarning::UnclosedVerbatim(spec) => spec.into(),
+            AnyLTreeWarning::VerbatimUnderindented(spec) => spec.into(),
         }
     }
 }
@@ -454,8 +510,36 @@ impl<'a, 'b> From<AbruptChildBlockWarning<'a, 'b>> for Issue<'b> {
         Issue {
             quote,
             title: "Missing blank separator line",
-            subtext: "Conventionally, a child block is separated from its parent by a blank line.",
+            subtext: "Conventionally, a child block is seperated from its parent by a blank line.",
             severity: Severity::Warning,
+        }
+    }
+}
+
+impl<'a, 'b> From<VerbatimUnderindentedWarning<'a, 'b>> for Issue<'b> {
+    fn from(value: VerbatimUnderindentedWarning<'a, 'b>) -> Self {
+        let mut quote = AnnotatedSourceSection::from_span(&value.verbatim.span);
+        quote.place_barrier_before(value.verbatim.span.begin.line_pos, 
+            BarrierStyle::Ruler(0, value.verbatim.indent), 
+            "expected indent in these columns");
+        Issue {
+            quote,
+            title: "Verbatim Block contains under-indented lines",
+            subtext: "Lines in a Verbatim Block should be at the same level as the declarator.",
+            severity: Severity::Warning,
+        }
+    }
+}
+
+impl<'a, 'b> From<UnclosedVerbatimWarning<'a, 'b>> for Issue<'b> {
+    fn from(value: UnclosedVerbatimWarning<'a, 'b>) -> Self {
+        let mut quote = AnnotatedSourceSection::from_span(&value.verbatim.span);
+        quote.limit = Some(value.verbatim.span.begin.line_pos + 1);
+         Issue {
+            quote,
+            title: "Verbatim Block is never closed",
+            subtext: "Every Verbatim Block must end with a backtick tail.",
+            severity: Severity::Error,
         }
     }
 }

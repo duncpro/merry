@@ -47,18 +47,16 @@ use unicode_width::UnicodeWidthStr;
 
 impl<'a> ForwardCursor<'a> {
     /// Advances the cursor until a non-space character is encountered.
-    pub fn pop_spaces<'b>(&'b mut self) -> usize {
-        let mut count: usize = 0;
+    pub fn pop_spaces<'b>(&'b mut self) -> SourceSpan<'a> {
+        let begin = self.pos;
         loop {
             if self.rem().chars().next() != Some(' ') { break; }
             self.pos.byte_pos += 1;
             self.pos.colu_pos += 1;
-            count += 1;
         }
-        return count;
+        let end = self.pos;
+        return SourceSpan { source: self.source, begin, end };
     }
-
-    pub fn peek_spaces<'b>(&'b self) -> usize { self.clone().pop_spaces() }
 
     /// Returns true if and only if `pred` is subsequent to the cursor.
     pub fn at(&self, pred: &str) -> bool { self.rem().starts_with(pred) }
@@ -76,6 +74,12 @@ impl<'a> ForwardCursor<'a> {
             self.pos.colu_pos += grapheme.width();
         }
         return true;
+    }
+
+    pub fn repeat_match_symbol(&mut self, pred: &str) -> usize {
+        let mut count: usize = 0;
+        while self.match_symbol(pred) { count += 1; }
+        return count;
     }
 
     pub fn match_linebreak(&mut self) -> bool {
@@ -159,8 +163,8 @@ impl<C> Scanner<C> where C: Fn(&mut ForwardCursor) -> bool {
 macro_rules! scanner {
     ($(#[ $attr:meta ])* $func_name:ident ($($param:ident : $type:ty),*) |$cursor:ident| $block:block) => {
         $(#[ $attr ])*
-        pub fn $func_name($($param: $type),*) -> impl crate::parse::Scan {
-            crate::parse::Scanner::new(move |$cursor| $block)
+        pub fn $func_name($($param: $type),*) -> impl crate::scan::Scan {
+            crate::scan::Scanner::new(move |$cursor| $block)
         }
     };
 }

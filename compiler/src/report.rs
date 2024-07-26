@@ -5,7 +5,7 @@
 use std::collections::{BTreeMap, HashMap};
 use crate::misc::pad;
 use crate::misc::ansi::*;
-use crate::parse::SourceSpan;
+use crate::scan::SourceSpan;
 
 /// A reference to zero or more consecutive lines in a source file along with annotations.
 pub struct AnnotatedSourceSection<'a> {
