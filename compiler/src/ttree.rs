@@ -1,7 +1,3 @@
-use std::iter::Peekable;
-
-use crate::scan::{SourceSpan, SourceLocation, ForwardCursor};
-
 pub mod ast {
     use crate::scan::SourceSpan;
 
@@ -13,9 +9,15 @@ pub mod ast {
 
     #[derive(Debug)]
     pub enum Tag<'a> {
-        Split(/* first part */ SourceSpan<'a>),
-        Unsplit(SourceSpan<'a>)
+        Split(SplitTag<'a>),
+        Unsplit(UnsplitTag<'a>)
     }
+
+    #[derive(Debug)]
+    pub struct SplitTag<'a> { pub span: SourceSpan<'a> }
+
+    #[derive(Debug)]
+    pub struct UnsplitTag<'a> { pub span: SourceSpan<'a> }
 
     #[derive(Debug)]
     #[derive(Clone, Copy)]
@@ -80,6 +82,8 @@ struct ParseContext<'a, 'b> {
     next_line_i: usize,
     line_cursor: ForwardCursor<'b>
 }
+
+use crate::scan::{SourceSpan, SourceLocation, ForwardCursor};
 
 #[allow(unused_assignments)]
 fn parse_root<'a, 'b>(ctx: &mut ParseContext<'a, 'b>, stop_at: Option<&str>) -> ast::Root<'b>
@@ -146,32 +150,34 @@ fn parse_trailing_qualifier<'a, 'b>(ctx: &mut ParseContext<'a, 'b>)
     if ctx.line_cursor.match_symbol("{").is_none() { return None; }
     let mut tags: Vec<ast::Tag<'b>> = Vec::new();
     let mut current_tag_begin: Option<SourceLocation> = None;
-    macro_rules! push_tag { ($is_split:expr) => {
+    let mut is_split: bool = false;
+    macro_rules! push_tag { () => {
         if let Some(begin) = current_tag_begin {
             if begin.byte_pos < ctx.line_cursor.pos().byte_pos {
                 let span = SourceSpan { source: ctx.line_cursor.source, begin,
                     end: ctx.line_cursor.pos() };
-                let tag = match $is_split {
-                    true => ast::Tag::Split(span),
-                    false => ast::Tag::Unsplit(span)
+                let tag = match is_split {
+                    true => ast::Tag::Split(ast::SplitTag { span }),
+                    false => ast::Tag::Unsplit(ast::UnsplitTag { span })
                 };
                 tags.push(tag);
             }
             current_tag_begin = None;
+            is_split = false;
         }
     }}
     let mut close: Option<SourceSpan<'b>> = None;
     loop {
         if is_totally_exhausted(ctx) { break; };
         if is_line_exhausted(ctx) { 
-            push_tag!(true);
+            is_split = true;
             advance_line(ctx); 
             continue; 
         }
-        if ctx.line_cursor.match_symbol(" ").is_some() { push_tag!(true); continue; }
-        if ctx.line_cursor.match_symbol(",").is_some() { push_tag!(false); continue; }
+        if ctx.line_cursor.match_symbol(" ").is_some() { push_tag!(); continue; }
+        if ctx.line_cursor.match_symbol(",").is_some() { push_tag!(); continue; }
         if ctx.line_cursor.at_symbol("}") {
-            push_tag!(false);
+            push_tag!();
             close = Some(ctx.line_cursor.match_symbol("}").unwrap());
             break;
         }
@@ -217,3 +223,117 @@ fn spell_delim(delim: ast::DelimiterKind) -> &'static str {
     }
 }
 
+use crate::report::{Issue, AnnotatedSourceSection, Severity, BarrierStyle};
+
+pub enum AnyTTreeIssue<'a, 'b> {
+    SplitTagError(SplitTagError<'a, 'b>),
+    UnclosedDelimiterError(UnclosedDelimiterError<'a, 'b>),
+    UnclosedBracketError(UnclosedBracketError<'a, 'b>)
+}
+
+pub struct SplitTagError<'a, 'b> { tag: &'a ast::SplitTag<'b> }
+pub struct UnclosedDelimiterError<'a, 'b> { node: &'a ast::DelimitedText<'b> }
+pub struct UnclosedBracketError<'a, 'b> { node: &'a ast::BracketedText<'b> }
+
+pub fn verify_ttree<'a, 'b>(root: &'a ast::Root<'b>) -> Vec<AnyTTreeIssue<'a, 'b>>{
+    let mut issues: Vec<AnyTTreeIssue<'a, 'b>> = Vec::new();
+    verify_root(root, &mut issues);
+    return issues;
+}
+
+fn verify_root<'a, 'b>(root: &'a ast::Root<'b>, issues: &mut Vec<AnyTTreeIssue<'a, 'b>>) {
+    for child in &root.children {
+        if let ast::AnyText::Bracketed(bracketed) = child {
+            verify_bracketed(bracketed, issues);
+            continue;
+        }
+        if let ast::AnyText::Delimited(delimited) = child {
+            verify_delimited(delimited, issues);
+            continue;
+        }
+    }
+}
+
+fn verify_bracketed<'a, 'b>(node: &'a ast::BracketedText<'b>, 
+    issues: &mut Vec<AnyTTreeIssue<'a, 'b>>) 
+{
+    verify_qualifier(&node.trailing_qualifier, issues);
+    verify_root(&node.child_root, issues);
+    if node.close.is_none() {
+        let error = UnclosedBracketError { node };
+        issues.push(AnyTTreeIssue::UnclosedBracketError(error));
+    }
+}
+
+fn verify_delimited<'a, 'b>(node: &'a ast::DelimitedText<'b>,
+    issues: &mut Vec<AnyTTreeIssue<'a, 'b>>)
+{
+    verify_qualifier(&node.trailing_qualifier, issues);
+    verify_root(&node.child_root, issues);
+    if node.close.is_none() {
+        let error = UnclosedDelimiterError { node };
+        issues.push(AnyTTreeIssue::UnclosedDelimiterError(error));
+    }
+}
+
+fn verify_qualifier<'a, 'b>(qualifier_opt: &'a Option<ast::TrailingQualifier<'b>>, 
+    issues: &mut Vec<AnyTTreeIssue<'a, 'b>>) 
+{
+    let Some(qualifier) = qualifier_opt else { return; };
+    for tag in &qualifier.tags {
+        if let ast::Tag::Split(split_tag) = tag {
+            issues.push(AnyTTreeIssue::SplitTagError(SplitTagError { tag: split_tag }));
+        }
+    }
+}
+
+impl<'a, 'b> From<AnyTTreeIssue<'a, 'b>> for Issue<'b> {
+    fn from(value: AnyTTreeIssue<'a, 'b>) -> Self {
+        match value {
+            AnyTTreeIssue::SplitTagError(spec) => spec.into(),
+            AnyTTreeIssue::UnclosedDelimiterError(spec) => spec.into(),
+            AnyTTreeIssue::UnclosedBracketError(spec) => spec.into(),
+        }
+    }
+}
+
+impl<'a, 'b> From<SplitTagError<'a, 'b>> for Issue<'b> {
+    fn from(value: SplitTagError<'a, 'b>) -> Self {
+        let mut quote = AnnotatedSourceSection::from_span(&value.tag.span);
+        quote.place_barrier_before(value.tag.span.begin.line_pos, 
+            BarrierStyle::Ruler(value.tag.span.begin.colu_pos, 1), 
+            "split tag begins here");
+        Issue {
+            quote,
+            title: "Tag cannot split over linebreak",
+            subtext: "A tag within a trailing qualifier cannot be split over a linebreak.",
+            severity: Severity::Error,
+        }
+    }
+}
+
+impl<'a, 'b> From<UnclosedDelimiterError<'a, 'b>> for Issue<'b> {
+    fn from(value: UnclosedDelimiterError<'a, 'b>) -> Self {
+        let mut quote = AnnotatedSourceSection::from_span(&value.node.open);
+        quote.highlight(value.node.open.begin.byte_pos, value.node.open.end.byte_pos);
+        Issue {
+            quote,
+            title: "Delimited text span is never closed",
+            subtext: "There is no closing delimiter for the span opened here...",
+            severity: Severity::Error
+        }
+    }
+}
+
+impl<'a, 'b> From<UnclosedBracketError<'a, 'b>> for Issue<'b> {
+    fn from(value: UnclosedBracketError<'a, 'b>) -> Self {
+        let mut quote = AnnotatedSourceSection::from_span(&value.node.open);
+        quote.highlight(value.node.open.begin.byte_pos, value.node.open.end.byte_pos);
+        Issue {
+            quote,
+            title: "Bracketed text span is never closed",
+            subtext: "There is no closing bracket for the span opened here...",
+            severity: Severity::Error
+        }
+    }
+}

@@ -47,7 +47,10 @@ mod ast {
     }
 }
 
-use crate::{ltree, ttree, scan::SourceSpan};
+use crate::ltree;
+use crate::report::Issue;
+use crate::scan::SourceSpan;
+use crate::ttree::{self, verify_ttree, AnyTTreeIssue};
 
 pub fn make_mtree<'a, 'b>(ltree: &'a ltree::ast::Root<'b>) -> ast::Root<'b> {
     let block = make_block(&ltree.block);
@@ -81,4 +84,44 @@ pub fn make_block<'a, 'b>(ltree_block: &'a ltree::ast::Block<'b>) -> ast::Block<
     }
     push_paragraph!();
     return ast::Block { children: mtree_children }
+}
+
+pub enum AnyMTreeIssue<'a, 'b> {
+    AnyTTreeIssue(AnyTTreeIssue<'a, 'b>)
+}
+
+impl<'a, 'b> From<AnyMTreeIssue<'a, 'b>> for Issue<'b> {
+    fn from(value: AnyMTreeIssue<'a, 'b>) -> Self {
+        match value {
+            AnyMTreeIssue::AnyTTreeIssue(spec) => spec.into(),
+        }
+    }
+}
+
+pub fn verify_mtree<'a, 'b>(root: &'a ast::Root<'b>) -> Vec<AnyMTreeIssue<'a, 'b>> {
+    let mut issues: Vec<AnyMTreeIssue<'a, 'b>> = Vec::new();
+    verify_block(&root.block, &mut issues);
+    return issues;
+}
+
+pub fn verify_block<'a, 'b>(block: &'a ast::Block<'b>, issues: &mut Vec<AnyMTreeIssue<'a, 'b>>) {
+    for child in &block.children {
+        if let ast::BlockChild::Block(child_block) = child {
+            verify_block(child_block, issues);
+            continue;
+        }
+        if let ast::BlockChild::Paragraph(paragraph) = child {
+            verify_paragraph(paragraph, issues);
+            continue;
+        }
+    }
+}
+
+pub fn verify_paragraph<'a, 'b>(paragraph: &'a ast::Paragraph<'b>,
+    issues: &mut Vec<AnyMTreeIssue<'a, 'b>>) 
+{
+    let ttree_issues = verify_ttree(&paragraph.content);
+    for issue in ttree_issues { 
+        issues.push(AnyMTreeIssue::AnyTTreeIssue(issue));
+    }
 }

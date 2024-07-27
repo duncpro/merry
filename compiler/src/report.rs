@@ -3,6 +3,7 @@
 //! and nicely formatted error messages for all these.
 
 use std::collections::{BTreeMap, HashMap};
+use std::io::Write;
 use crate::misc::pad;
 use crate::misc::ansi::*;
 use crate::scan::SourceSpan;
@@ -109,6 +110,8 @@ fn print_quote(quote: &AnnotatedSourceSection, highlight_color: &'static str) {
     let line_no_len = quote.last_line_no.to_string().len();
     
     let mut line_no = quote.first_line_no;
+    let mut byte_pos: usize = quote.first_line_begin_bpos;
+    let mut stop_highlight_at: Option<usize> = None;
     for line_text in quote_text.lines() {
         if let Some(barrier) = quote.barriers.get(&line_no) {
             for _ in 0..(line_no_len + 2) { print!(" "); }
@@ -123,10 +126,27 @@ fn print_quote(quote: &AnnotatedSourceSection, highlight_color: &'static str) {
         }
         print!("{}| ", pad(&(line_no + 1).to_string(), line_no_len));
         print!("{}", FG_GREY);
-        println!("{}", line_text);
+        let mut stdout_handle = std::io::stdout().lock();
+        for byte in line_text.bytes() {
+            if let Some(highlight) = quote.highlights.get(&byte_pos) {
+                stdout_handle.write_all(highlight_color.as_bytes());
+                stop_highlight_at = Some(byte_pos + highlight.byte_length);
+            }
+            if let Some(stop_pos) = stop_highlight_at {
+                if stop_pos == byte_pos { 
+                    stdout_handle.write_all(BG_DEFAULT.as_bytes());
+                    stop_highlight_at = None;
+                }
+            }
+            stdout_handle.write(&[byte]);
+            byte_pos += 1;
+        }
+        std::mem::drop(stdout_handle);
+        println!();
         print!("{}", FG_DEFAULT);
         if quote.limit == Some(line_no) { break; }
         line_no += 1;
+        byte_pos += 1; // TODO WindowsLinebreaks
     }
 
     if line_no < quote.last_line_no {

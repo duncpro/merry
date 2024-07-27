@@ -263,7 +263,7 @@ scanner! {
 // Verification
 
 #[derive(Clone, Copy, Debug)]
-pub enum AnyLTreeWarning<'a, 'b> {
+pub enum AnyLTreeIssue<'a, 'b> {
     /// This warning is raised for every *block* that is indented less than three spaces
     /// past its parent block.
     ///
@@ -287,7 +287,7 @@ pub enum AnyLTreeWarning<'a, 'b> {
     /// sibling by a vertical space. 
     AbruptChildBlock(AbruptChildBlockWarning<'a, 'b>),
 
-    UnclosedVerbatim(UnclosedVerbatimWarning<'a, 'b>),
+    UnclosedVerbatim(UnclosedVerbatimError<'a, 'b>),
 
     VerbatimUnderindented(VerbatimUnderindentedWarning<'a, 'b>)
 }
@@ -316,7 +316,7 @@ pub struct AbruptChildBlockWarning<'a, 'b> {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct UnclosedVerbatimWarning<'a, 'b> {
+pub struct UnclosedVerbatimError<'a, 'b> {
     verbatim: &'a ast::Verbatim<'b>
 }
 
@@ -325,14 +325,14 @@ pub struct VerbatimUnderindentedWarning<'a, 'b> {
     verbatim: &'a ast::Verbatim<'b>
 }
 
-pub fn verify_ltree<'a, 'b>(root: &'a ast::Root<'b>) -> Vec<AnyLTreeWarning<'a, 'b>> {
-    let mut report: Vec<AnyLTreeWarning<'a, 'b>> = Vec::new();
+pub fn verify_ltree<'a, 'b>(root: &'a ast::Root<'b>) -> Vec<AnyLTreeIssue<'a, 'b>> {
+    let mut report: Vec<AnyLTreeIssue<'a, 'b>> = Vec::new();
     verify_seperation(&root.block, &mut report, false);
     verify_block(&root.block, &mut report, 0);  
     return report;
 }
 
-fn verify_block<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTreeWarning<'a, 'b>>,
+fn verify_block<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTreeIssue<'a, 'b>>,
     expect_indent: usize) 
 {
     verify_block_indent(block, report, expect_indent);
@@ -363,11 +363,11 @@ fn verify_block<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTreeWarn
         let ast::BlockChild::Block(ref next_block) = next else { continue };
         if matches!(tail(&block.children[i]), ast::BlockChild::VerticalSpace(_)) { continue; }
         let acb_warning = AbruptChildBlockWarning { child_block: next_block };
-        report.push(AnyLTreeWarning::AbruptChildBlock(acb_warning));
+        report.push(AnyLTreeIssue::AbruptChildBlock(acb_warning));
     }
 }
 
-fn verify_seperation<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTreeWarning<'a, 'b>>,
+fn verify_seperation<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTreeIssue<'a, 'b>>,
     allow_double_break: bool) 
 {
     let mut vspace_bounds: Option<(&ast::VerticalSpace, &ast::VerticalSpace)> = None;
@@ -378,7 +378,7 @@ fn verify_seperation<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTre
                 let span = SourceSpan { source: first.span.source,
                     begin: first.span.begin, end: last.span.begin };
                 let evs_warning = ExcessiveVerticalSpaceWarning { span, limit };
-                report.push(AnyLTreeWarning::ExcessiveVerticalSpace(evs_warning));
+                report.push(AnyLTreeIssue::ExcessiveVerticalSpace(evs_warning));
             }
          }
     }}
@@ -395,22 +395,22 @@ fn verify_seperation<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTre
      push_vspace_error!(/* tail_call = */ true);
  } 
 
-fn verify_block_indent<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTreeWarning<'a, 'b>>,
+fn verify_block_indent<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTreeIssue<'a, 'b>>,
     expect_indent: usize) 
 {
     let actual_indent = block.indent;
     if actual_indent > expect_indent {
         let ei_warning = ExcessiveIndentWarning { expect_indent, block };
-        report.push(AnyLTreeWarning::ExcessiveIndent(ei_warning));
+        report.push(AnyLTreeIssue::ExcessiveIndent(ei_warning));
     }
     if actual_indent < expect_indent {
         let ii_warning = InsufficientIndentWarning { expect_indent, block };
-        report.push(AnyLTreeWarning::InsufficientIndent(ii_warning));
+        report.push(AnyLTreeIssue::InsufficientIndent(ii_warning));
     }
 }
 
 fn verify_verbatim<'a, 'b>(verbatim: &'a ast::Verbatim<'b>, 
-    report: &mut Vec<AnyLTreeWarning<'a, 'b>>) 
+    report: &mut Vec<AnyLTreeIssue<'a, 'b>>) 
 {
     let mut inconsistent_indent = false;
     for line in &verbatim.lines {
@@ -425,25 +425,25 @@ fn verify_verbatim<'a, 'b>(verbatim: &'a ast::Verbatim<'b>,
     }
     if inconsistent_indent {
         let warning = VerbatimUnderindentedWarning { verbatim };
-        report.push(AnyLTreeWarning::VerbatimUnderindented(warning));
+        report.push(AnyLTreeIssue::VerbatimUnderindented(warning));
     }
     if verbatim.tail.is_none() {
-        let warning = UnclosedVerbatimWarning { verbatim };
-        report.push(AnyLTreeWarning::UnclosedVerbatim(warning));
+        let warning = UnclosedVerbatimError { verbatim };
+        report.push(AnyLTreeIssue::UnclosedVerbatim(warning));
     }
 }
 
 use crate::report::{Issue, AnnotatedSourceSection, Severity, BarrierStyle};
 
-impl<'a, 'b> From<AnyLTreeWarning<'a, 'b>> for Issue<'b> {
-    fn from(any: AnyLTreeWarning<'a, 'b>) -> Self {
+impl<'a, 'b> From<AnyLTreeIssue<'a, 'b>> for Issue<'b> {
+    fn from(any: AnyLTreeIssue<'a, 'b>) -> Self {
         match any {
-            AnyLTreeWarning::InsufficientIndent(spec) => spec.into(),
-            AnyLTreeWarning::ExcessiveIndent(spec) => spec.into(),
-            AnyLTreeWarning::ExcessiveVerticalSpace(spec) => spec.into(),
-            AnyLTreeWarning::AbruptChildBlock(spec) => spec.into(),
-            AnyLTreeWarning::UnclosedVerbatim(spec) => spec.into(),
-            AnyLTreeWarning::VerbatimUnderindented(spec) => spec.into(),
+            AnyLTreeIssue::InsufficientIndent(spec) => spec.into(),
+            AnyLTreeIssue::ExcessiveIndent(spec) => spec.into(),
+            AnyLTreeIssue::ExcessiveVerticalSpace(spec) => spec.into(),
+            AnyLTreeIssue::AbruptChildBlock(spec) => spec.into(),
+            AnyLTreeIssue::UnclosedVerbatim(spec) => spec.into(),
+            AnyLTreeIssue::VerbatimUnderindented(spec) => spec.into(),
         }
     }
 }
@@ -530,8 +530,8 @@ impl<'a, 'b> From<VerbatimUnderindentedWarning<'a, 'b>> for Issue<'b> {
     }
 }
 
-impl<'a, 'b> From<UnclosedVerbatimWarning<'a, 'b>> for Issue<'b> {
-    fn from(value: UnclosedVerbatimWarning<'a, 'b>) -> Self {
+impl<'a, 'b> From<UnclosedVerbatimError<'a, 'b>> for Issue<'b> {
+    fn from(value: UnclosedVerbatimError<'a, 'b>) -> Self {
         let mut quote = AnnotatedSourceSection::from_span(&value.verbatim.span);
         quote.limit = Some(value.verbatim.span.begin.line_pos + 1);
          Issue {
