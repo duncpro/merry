@@ -40,8 +40,7 @@ pub mod ast {
         pub span: SourceSpan<'a>
     } 
 
-    // TODO: Remove Clone, Copy
-    #[derive(Clone, Copy, Debug)]
+    #[derive(Debug)]
     pub struct VerticalSpace<'a> { pub span: SourceSpan<'a> }
 
     #[derive(Debug)]
@@ -196,7 +195,7 @@ fn parse_verbatim<'a, 'b>(ctx: &'a mut ParseContext<'b>, indent: usize) -> ast::
             if actual_indent == indent { break; }
             // The the indent ends prematurely, we'll begin the verbatim early,
             // however this will be reported as an issue during the verification step.
-            if !ctx.cursor.match_symbol(" ") { break; }
+            if ctx.cursor.match_symbol(" ").is_none() { break; }
             actual_indent += 1;
         }
         if ctx.cursor.is_end() { break; }
@@ -219,7 +218,7 @@ scanner! {
     list_decl (indent: usize) |cursor| {
         cursor.pop_spaces();
         if cursor.pos().colu_pos != indent { return false }
-        cursor.match_symbol("-- ")
+        cursor.match_symbol("-- ").is_some()
     }
 }
 
@@ -371,7 +370,7 @@ fn verify_block<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTreeWarn
 fn verify_seperation<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTreeWarning<'a, 'b>>,
     allow_double_break: bool) 
 {
-    let mut vspace_bounds: Option<(ast::VerticalSpace, ast::VerticalSpace)> = None;
+    let mut vspace_bounds: Option<(&ast::VerticalSpace, &ast::VerticalSpace)> = None;
     macro_rules! push_vspace_error { ($tail_call:expr) => {
         if let Some((first, last)) = vspace_bounds.take() {
             let limit = if $tail_call && allow_double_break { 2 } else { 1 };
@@ -386,8 +385,8 @@ fn verify_seperation<'a, 'b>(block: &'a ast::Block<'b>, report: &mut Vec<AnyLTre
     for child in &block.children {
         if let ast::BlockChild::VerticalSpace(vspace) = child {
             match vspace_bounds {
-                Some((_, ref mut end)) => *end = *vspace,
-                None => vspace_bounds = Some((*vspace, *vspace)),
+                Some((_, ref mut end)) => *end = vspace,
+                None => vspace_bounds = Some((vspace, vspace)),
             }
             continue;
         } 
