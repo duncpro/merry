@@ -14,15 +14,18 @@ fn main() -> std::io::Result<()> {
     println!("{}#{} merryc {}v{}{} is compiling {}\"{}\"{}...", ansi::BOLD, ansi::DEFAULT_TEXT_STYLE,
         ansi::FG_GREY, env!("CARGO_PKG_VERSION"), ansi::FG_DEFAULT,
         ansi::FG_GREY, input_file, ansi::FG_DEFAULT);
+    
     let source_text = std::fs::read_to_string(input_file)?;
     let ltree = make_ltree(&source_text);
     let mtree = make_mtree(&ltree);
+    
     let mut issues: Vec<Issue> = Vec::new();
     for issue in verify_ltree(&ltree) { issues.push(issue.into()) }
     for issue in verify_mtree(&mtree) { issues.push(issue.into()) }
     println!("{}##{} compilation finished with {}{}{} issues.", ansi::BOLD, ansi::DEFAULT_TEXT_STYLE,
         ansi::FG_GREY, issues.len(), ansi::FG_DEFAULT);
     println!();
+    
     issues.sort_by_key(|issue| issue.quote.first_line_no);
     for (i, issue) in issues.iter().enumerate() { 
         print!("{}. ", i + 1);
