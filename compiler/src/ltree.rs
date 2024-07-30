@@ -71,9 +71,13 @@ pub mod ast {
     #[derive(Debug)]
     pub struct Verbatim<'a> {
         pub lines: Vec<SourceSpan<'a>>,
-        pub tail: Option<SourceSpan<'a>>,
+        pub close: Option<SourceSpan<'a>>,
         pub span: SourceSpan<'a>,
-        pub indent: usize
+        pub indent: usize,
+        /// The tail of a Verbatim is the remainder left of the last line after
+        /// the closing declarator is consumed.
+        pub tail: Option<SourceSpan<'a>>,
+        pub open: SourceSpan<'a>
     }
 }
 
@@ -182,11 +186,13 @@ fn parse_list<'a, 'b>(ctx: &'a mut ParseContext<'b>, indent: usize, depth: usize
 }
 
 fn parse_verbatim<'a, 'b>(ctx: &'a mut ParseContext<'b>, indent: usize) -> ast::Verbatim<'b> {
-    let begin = ctx.cursor.pos();
     assert_eq!(ctx.cursor.pop_spaces().end.colu_pos, indent);
-    let start_backtick_count: usize = ctx.cursor.repeat_match_symbol("`");
+    let begin = ctx.cursor.pos();
+    let open = ctx.cursor.match_scan(verbatim_open()).unwrap();
+    let start_backtick_count: usize = open.as_ref().len();
     assert!(ctx.cursor.match_linebreak());
     let mut lines: Vec<SourceSpan<'b>> = Vec::new();
+    let mut close: Option<SourceSpan<'b>> = None;
     let mut tail: Option<SourceSpan<'b>> = None;
     loop {
         let mut actual_indent: usize = 0;
@@ -200,17 +206,16 @@ fn parse_verbatim<'a, 'b>(ctx: &'a mut ParseContext<'b>, indent: usize) -> ast::
         }
         if ctx.cursor.is_end() { break; }
         if let Some(span) = ctx.cursor.match_scan(verbatim_end(start_backtick_count)) {
-            tail = Some(span);
-            // TODO: Parse trailing qualifier
+            close = Some(span);
+            tail = Some(ctx.cursor.pop_line());
             break;
         }
         lines.push(ctx.cursor.pop_line());
     }
     let end = ctx.cursor.pos();
     let span = SourceSpan { source: ctx.cursor.source, begin, end };
-    return ast::Verbatim { span, lines, tail, indent };
+    return ast::Verbatim { span, lines, close, indent, tail, open };
 }
-
 
 // Token Scanners
 
@@ -259,6 +264,15 @@ scanner! {
     }
 }
 
+scanner! {
+    verbatim_open() |cursor| {
+        let backtick_count = cursor.repeat_match_symbol("`");
+        return backtick_count > 0;
+    }
+}
+
+
+
 
 // Verification
 
@@ -289,7 +303,9 @@ pub enum AnyLTreeIssue<'a, 'b> {
 
     UnclosedVerbatim(UnclosedVerbatimError<'a, 'b>),
 
-    VerbatimUnderindented(VerbatimUnderindentedWarning<'a, 'b>)
+    VerbatimUnderindented(VerbatimUnderindentedWarning<'a, 'b>),
+
+    LongVerbatimCloseWarning(LongVerbatimCloseWarning<'a, 'b>)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -323,6 +339,12 @@ pub struct UnclosedVerbatimError<'a, 'b> {
 #[derive(Clone, Copy, Debug)]
 pub struct VerbatimUnderindentedWarning<'a, 'b> {
     verbatim: &'a ast::Verbatim<'b>
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct LongVerbatimCloseWarning<'a, 'b> { 
+    node: &'a ast::Verbatim<'b>,
+    close: SourceSpan<'b>
 }
 
 pub fn verify_ltree<'a, 'b>(root: &'a ast::Root<'b>) -> Vec<AnyLTreeIssue<'a, 'b>> {
@@ -418,7 +440,7 @@ fn verify_verbatim<'a, 'b>(verbatim: &'a ast::Verbatim<'b>,
         inconsistent_indent = true;
         break;
     }
-    if let Some(end_span) = verbatim.tail {
+    if let Some(end_span) = verbatim.close {
         if end_span.begin.colu_pos != verbatim.indent {
             inconsistent_indent = true;
         }
@@ -427,9 +449,15 @@ fn verify_verbatim<'a, 'b>(verbatim: &'a ast::Verbatim<'b>,
         let warning = VerbatimUnderindentedWarning { verbatim };
         report.push(AnyLTreeIssue::VerbatimUnderindented(warning));
     }
-    if verbatim.tail.is_none() {
+    if verbatim.close.is_none() {
         let warning = UnclosedVerbatimError { verbatim };
         report.push(AnyLTreeIssue::UnclosedVerbatim(warning));
+    }
+    if let Some(close) = verbatim.close {
+        if close.as_ref().len() > verbatim.open.as_ref().len() {
+            let warning = LongVerbatimCloseWarning { close, node: verbatim };
+            report.push(AnyLTreeIssue::LongVerbatimCloseWarning(warning));
+        }
     }
 }
 
@@ -444,6 +472,7 @@ impl<'a, 'b> From<AnyLTreeIssue<'a, 'b>> for Issue<'b> {
             AnyLTreeIssue::AbruptChildBlock(spec) => spec.into(),
             AnyLTreeIssue::UnclosedVerbatim(spec) => spec.into(),
             AnyLTreeIssue::VerbatimUnderindented(spec) => spec.into(),
+            AnyLTreeIssue::LongVerbatimCloseWarning(spec) => spec.into(),
         }
     }
 }
@@ -523,8 +552,8 @@ impl<'a, 'b> From<VerbatimUnderindentedWarning<'a, 'b>> for Issue<'b> {
             "expected indent in these columns");
         Issue {
             quote,
-            title: "Verbatim Block contains under-indented lines",
-            subtext: "Lines in a Verbatim Block should be at the same level as the declarator.",
+            title: "Backtick block contains under-indented lines",
+            subtext: "The lines in a backtick block should begin at the same level as the declarator.",
             severity: Severity::Warning,
         }
     }
@@ -536,12 +565,28 @@ impl<'a, 'b> From<UnclosedVerbatimError<'a, 'b>> for Issue<'b> {
         quote.limit = Some(value.verbatim.span.begin.line_pos + 1);
          Issue {
             quote,
-            title: "Verbatim Block is never closed",
-            subtext: "Every Verbatim Block must end with a backtick tail.",
+            title: "Backtick block is never closed",
+            subtext: "This backtick block should end with a closing declarator matching the \
+                      opening declarator.",
             severity: Severity::Error,
         }
     }
 }
+
+impl<'a, 'b> From<LongVerbatimCloseWarning<'a, 'b>> for Issue<'b> {
+    fn from(value: LongVerbatimCloseWarning<'a, 'b>) -> Self {
+        let mut quote = AnnotatedSourceSection::from_span(&value.node.span);
+        quote.highlight(value.node.open.begin.byte_pos, value.node.open.end.byte_pos);
+        quote.highlight(value.close.begin.byte_pos, value.close.end.byte_pos);
+        Issue { 
+            quote,
+            title: "Too many closing backticks",
+            subtext: "The number of closing backticks should equal the number of opening backticks.",
+            severity: Severity::Warning
+        }
+    }
+}
+
 
 // Utilities
 

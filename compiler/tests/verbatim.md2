@@ -1,3 +1,12 @@
 ```
-println!("hello world");	
+println!("hello world");
+// Line 2
+````{rust}
+
+This is an `inline verbatim
+``{text}.
+
+
 ```
+	println!("hello world");
+```{rust,

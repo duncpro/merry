@@ -11,7 +11,7 @@ use crate::scan::SourceSpan;
 /// A reference to zero or more consecutive lines in a source file along with annotations.
 pub struct AnnotatedSourceSection<'a> {
     source: &'a str,
-    first_line_no: usize,
+    pub first_line_no: usize,
     last_line_no: usize,
     first_line_begin_bpos: usize,
     last_line_end_bpos: usize,
@@ -107,7 +107,7 @@ impl<'a> AnnotatedSourceSection<'a> {
 
 fn print_quote(quote: &AnnotatedSourceSection, highlight_color: &'static str) {
     let quote_text = &quote.source[quote.first_line_begin_bpos..quote.last_line_end_bpos];
-    let line_no_len = quote.last_line_no.to_string().len();
+    let line_no_len = (quote.last_line_no + 1).to_string().len();
     
     let mut line_no = quote.first_line_no;
     let mut byte_pos: usize = quote.first_line_begin_bpos;
@@ -124,30 +124,37 @@ fn print_quote(quote: &AnnotatedSourceSection, highlight_color: &'static str) {
                 BarrierStyle::Placeholder => println!("** {} **", barrier.note),
             }
         }
+        // TODO: Replace pad() with non-allocating for loop
         print!("{}| ", pad(&(line_no + 1).to_string(), line_no_len));
         print!("{}", FG_GREY);
         let mut stdout_handle = std::io::stdout().lock();
         for byte in line_text.bytes() {
             if let Some(highlight) = quote.highlights.get(&byte_pos) {
-                stdout_handle.write_all(highlight_color.as_bytes());
+                stdout_handle.write_all(highlight_color.as_bytes()).unwrap();
                 stop_highlight_at = Some(byte_pos + highlight.byte_length);
             }
             if let Some(stop_pos) = stop_highlight_at {
                 if stop_pos == byte_pos { 
-                    stdout_handle.write_all(BG_DEFAULT.as_bytes());
+                    stdout_handle.write_all(BG_DEFAULT.as_bytes()).unwrap();
                     stop_highlight_at = None;
                 }
             }
-            stdout_handle.write(&[byte]);
+            stdout_handle.write(&[byte]).unwrap();
             byte_pos += 1;
         }
+        if let Some(stop_pos) = stop_highlight_at {
+            if stop_pos == byte_pos {
+                stdout_handle.write_all(BG_DEFAULT.as_bytes()).unwrap();
+                stop_highlight_at = None;
+            }
+        }
         std::mem::drop(stdout_handle);
-        println!();
-        print!("{}", FG_DEFAULT);
+        print!("\n{}", FG_DEFAULT); // TODO: WindowsLinebreaks
         if quote.limit == Some(line_no) { break; }
         line_no += 1;
         byte_pos += 1; // TODO WindowsLinebreaks
     }
+    println!("{}", BG_DEFAULT);
 
     if line_no < quote.last_line_no {
         println!("and {} more line(s)...", quote.last_line_no - line_no);
@@ -171,7 +178,7 @@ pub struct Issue<'a> {
     pub severity: Severity,
 }
 
-pub fn print_issue<'a>(issue: Issue<'a>, source_name: &str) {    
+pub fn print_issue<'a>(issue: &Issue<'a>, source_name: &str) {    
     print!("{}", BOLD);
     match issue.severity {
         Severity::Error => print!("{}Error{}: ", FG_RED, FG_DEFAULT),

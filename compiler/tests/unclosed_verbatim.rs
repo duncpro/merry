@@ -8,7 +8,7 @@ pub fn test_verify_ltree() {
     let ltree = make_ltree(&source);
     let warnings = verify_ltree(&ltree);
     for any_warning in &warnings {
-        print_issue((*any_warning).into(), "tests/unclosed_verbatim.md2");
+        print_issue(&(*any_warning).into(), "tests/unclosed_verbatim.md2");
         assert_matches!(any_warning, AnyLTreeIssue::UnclosedVerbatim(_));
     }
     assert_eq!(warnings.len(), 1);

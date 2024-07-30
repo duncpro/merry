@@ -31,7 +31,7 @@ pub fn test_verify_mtree() {
     let mtree = make_mtree(&ltree);
     let issues = verify_mtree(&mtree);
     for issue in issues {
-        print_issue(issue.into(), "tests/simple_paragraph.md2");
+        print_issue(&issue.into(), "tests/simple_paragraph.md2");
     }
 }
 
