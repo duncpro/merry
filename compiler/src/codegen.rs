@@ -21,9 +21,9 @@ pub fn codegen_block<'a, 'b, W>(block: &'a mtree::ast::Block<'b>, out: &mut W)
             mtree::ast::BlockChild::Paragraph(p) => codegen_paragraph(&p, out)?,
             mtree::ast::BlockChild::DirectiveInvocation(_) => todo!(),
             mtree::ast::BlockChild::Heading(h) => codegen_heading(&h, out)?,
-            mtree::ast::BlockChild::Block(_) => todo!(),
+            mtree::ast::BlockChild::Block(node) => todo!("no semantic for nested block yet"),
             mtree::ast::BlockChild::List(l) => codegen_list(&l, out)?,
-            mtree::ast::BlockChild::Verbatim(_) => todo!(),
+            mtree::ast::BlockChild::Verbatim(node) => codegen_verbatim_block(node, out)?,
         }
     }
     return Ok(())

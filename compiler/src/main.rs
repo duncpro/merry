@@ -11,7 +11,6 @@ fn main() -> std::io::Result<()> {
         println!("Usage: merryc <source file>");
         return Ok(());
     };
-    println!();
     println!("{}#{} merryc {}v{}{} is compiling {}\"{}\"{}...", ansi::BOLD, ansi::DEFAULT_TEXT_STYLE,
         ansi::FG_GREY, env!("CARGO_PKG_VERSION"), ansi::FG_DEFAULT,
         ansi::FG_GREY, input_file, ansi::FG_DEFAULT);
@@ -31,7 +30,11 @@ fn main() -> std::io::Result<()> {
     }
     
     let output_file_path = args.get(2).map(|a| a.as_str()).unwrap_or("out.html");
-    let mut output = std::fs::File::create_new(output_file_path)?;
+    let mut output = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(output_file_path)?;
     codegen(&mtree, &mut output)?;
     return Ok(());
 }
