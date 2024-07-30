@@ -1,23 +1,23 @@
 pub mod ast {
     use crate::scan::SourceSpan;
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct TrailingQualifier<'a> {
         pub tags: Vec<Tag<'a>>,
         pub close: Option<SourceSpan<'a>>,
         pub open: SourceSpan<'a>
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub enum Tag<'a> {
         Split(SplitTag<'a>),
         Unsplit(UnsplitTag<'a>)
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct SplitTag<'a> { pub span: SourceSpan<'a> }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct UnsplitTag<'a> { pub span: SourceSpan<'a> }
 
     #[derive(Debug)]
@@ -28,7 +28,7 @@ pub mod ast {
         Tilde
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct DelimitedText<'a> {
         pub delim_kind: DelimiterKind,
         pub open: SourceSpan<'a>,
@@ -37,7 +37,7 @@ pub mod ast {
         pub trailing_qualifier: Option<TrailingQualifier<'a>>
      }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct BracketedText<'a> {
         pub open: SourceSpan<'a>,
         pub close: Option<SourceSpan<'a>>,
@@ -45,10 +45,10 @@ pub mod ast {
         pub trailing_qualifier: Option<TrailingQualifier<'a>>
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct PlainText<'a> { pub span: SourceSpan<'a> }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub enum AnyText<'a> {
         Plain(PlainText<'a>),
         Delimited(DelimitedText<'a>),
@@ -57,7 +57,7 @@ pub mod ast {
         Bracketed(BracketedText<'a>)
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct InlineVerbatim<'a> { 
         pub inner_spans: Vec<SourceSpan<'a>>,
         pub trailing_qualifier: Option<TrailingQualifier<'a>>,
@@ -66,10 +66,10 @@ pub mod ast {
         pub span: SourceSpan<'a>
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct ImplicitSpace;
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Root<'a> {
         pub children: Vec<AnyText<'a>>
     }

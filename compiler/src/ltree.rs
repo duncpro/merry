@@ -185,38 +185,6 @@ fn parse_list<'a, 'b>(ctx: &'a mut ParseContext<'b>, indent: usize, depth: usize
     return ParseResult {destin, node };
 }
 
-fn parse_verbatim<'a, 'b>(ctx: &'a mut ParseContext<'b>, indent: usize) -> ast::Verbatim<'b> {
-    assert_eq!(ctx.cursor.pop_spaces().end.colu_pos, indent);
-    let begin = ctx.cursor.pos();
-    let open = ctx.cursor.match_scan(verbatim_open()).unwrap();
-    let start_backtick_count: usize = open.as_ref().len();
-    assert!(ctx.cursor.match_linebreak());
-    let mut lines: Vec<SourceSpan<'b>> = Vec::new();
-    let mut close: Option<SourceSpan<'b>> = None;
-    let mut tail: Option<SourceSpan<'b>> = None;
-    loop {
-        let mut actual_indent: usize = 0;
-        loop {
-            // Whitespace beyond the expected indent is interpreted verbatim.
-            if actual_indent == indent { break; }
-            // The the indent ends prematurely, we'll begin the verbatim early,
-            // however this will be reported as an issue during the verification step.
-            if ctx.cursor.match_symbol(" ").is_none() { break; }
-            actual_indent += 1;
-        }
-        if ctx.cursor.is_end() { break; }
-        if let Some(span) = ctx.cursor.match_scan(verbatim_end(start_backtick_count)) {
-            close = Some(span);
-            tail = Some(ctx.cursor.pop_line());
-            break;
-        }
-        lines.push(ctx.cursor.pop_line());
-    }
-    let end = ctx.cursor.pos();
-    let span = SourceSpan { source: ctx.cursor.source, begin, end };
-    return ast::Verbatim { span, lines, close, indent, tail, open };
-}
-
 // Token Scanners
 
 scanner! { 
@@ -271,8 +239,37 @@ scanner! {
     }
 }
 
-
-
+fn parse_verbatim<'a, 'b>(ctx: &'a mut ParseContext<'b>, indent: usize) -> ast::Verbatim<'b> {
+    assert_eq!(ctx.cursor.pop_spaces().end.colu_pos, indent);
+    let begin = ctx.cursor.pos();
+    let open = ctx.cursor.match_scan(verbatim_open()).unwrap();
+    let start_backtick_count: usize = open.as_ref().len();
+    assert!(ctx.cursor.match_linebreak());
+    let mut lines: Vec<SourceSpan<'b>> = Vec::new();
+    let mut close: Option<SourceSpan<'b>> = None;
+    let mut tail: Option<SourceSpan<'b>> = None;
+    loop {
+        let mut actual_indent: usize = 0;
+        loop {
+            // Whitespace beyond the expected indent is interpreted verbatim.
+            if actual_indent == indent { break; }
+            // The the indent ends prematurely, we'll begin the verbatim early,
+            // however this will be reported as an issue during the verification step.
+            if ctx.cursor.match_symbol(" ").is_none() { break; }
+            actual_indent += 1;
+        }
+        if ctx.cursor.is_end() { break; }
+        if let Some(span) = ctx.cursor.match_scan(verbatim_end(start_backtick_count)) {
+            close = Some(span);
+            tail = Some(ctx.cursor.pop_line());
+            break;
+        }
+        lines.push(ctx.cursor.pop_line());
+    }
+    let end = ctx.cursor.pos();
+    let span = SourceSpan { source: ctx.cursor.source, begin, end };
+    return ast::Verbatim { span, lines, close, indent, tail, open };
+}
 
 // Verification
 

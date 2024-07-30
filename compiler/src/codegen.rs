@@ -17,16 +17,36 @@ pub fn codegen_block<'a, 'b, W>(block: &'a mtree::ast::Block<'b>, out: &mut W)
 -> std::io::Result<()> where W: std::io::Write
 {
     for child in &block.children {
-        match child {
-            mtree::ast::BlockChild::Paragraph(p) => codegen_paragraph(&p, out)?,
-            mtree::ast::BlockChild::DirectiveInvocation(_) => todo!(),
-            mtree::ast::BlockChild::Heading(h) => codegen_heading(&h, out)?,
-            mtree::ast::BlockChild::Block(node) => todo!("no semantic for nested block yet"),
-            mtree::ast::BlockChild::List(l) => codegen_list(&l, out)?,
-            mtree::ast::BlockChild::Verbatim(node) => codegen_verbatim_block(node, out)?,
-        }
+        codegen_block_child(child, out)?;
     }
     return Ok(())
+}
+
+pub fn codegen_block_child<'a, 'b, W>(child: &'a mtree::ast::BlockChild<'b>, out: &mut W)
+-> std::io::Result<()> where W: std::io::Write
+{
+    match child {
+        mtree::ast::BlockChild::Paragraph(node) => codegen_paragraph(&node, out)?,
+        mtree::ast::BlockChild::DirectiveInvocation(_) => todo!(),
+        mtree::ast::BlockChild::Heading(node) => codegen_heading(&node, out)?,
+        mtree::ast::BlockChild::Block(node) => todo!("no semantic for nested block yet"),
+        mtree::ast::BlockChild::List(node) => codegen_list(&node, out)?,
+        mtree::ast::BlockChild::Verbatim(node) => codegen_verbatim_block(node, out)?,
+        mtree::ast::BlockChild::Section(node) => codegen_section(&node, out)?,
+    }
+    return Ok(())
+}
+
+pub fn codegen_section<'a, 'b, W>(section: &'a mtree::ast::Section<'b>, out: &mut W) 
+-> std::io::Result<()> where W: std::io::Write 
+{
+    write!(out, "<section>")?;
+    codegen_heading(&section.heading, out)?;
+    for child in &section.children {
+        codegen_block_child(child, out)?;
+    }
+    write!(out, "</section>")?;
+    return Ok(());
 }
 
 pub fn codegen_paragraph<'a, 'b, W>(block: &'a mtree::ast::Paragraph<'b>, out: &mut W)
@@ -41,9 +61,9 @@ pub fn codegen_paragraph<'a, 'b, W>(block: &'a mtree::ast::Paragraph<'b>, out: &
 pub fn codegen_heading<'a, 'b, W>(heading: &'a mtree::ast::Heading<'b>, out: &mut W)
 -> std::io::Result<()> where W: std::io::Write
 {
-    write!(out, "<h{}>", heading.hlevel + 1)?;
+    write!(out, "<h{}>", heading.hlevel)?;
     codegen_ttree(&heading.content, out)?;
-    write!(out, "</h{}>", heading.hlevel + 1)?;
+    write!(out, "</h{}>", heading.hlevel)?;
     return Ok(())
 }
 
