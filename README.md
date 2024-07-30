@@ -10,10 +10,24 @@ Compiler for my markdown-esque markup language.
 > as tested as the mainstream markdown compilers. At this point in development, you
 > should continue using standard markdown and a well-supported open-source markdown compiler
 > instead. I have used [commonmark.js](https://github.com/commonmark/commonmark.js/) in the
-> past, and it works well-enough.
+> past, and it works well enough.
  
-## Usage
+## Builing the Compiler
 ```
-cargo run input.md2 output.html
+git clone https://github.com/duncpro/merry
+git cd merry
+cargo build --release
+```
+The executable binary will be created at `./target/release/merryc`.
+
+## Compiling your first `.md2` source file
+```
+touch input.md2
+merryc input.md2 output.html
+open output.html
 ```
 
+## Current Features
+- Rich error messages complete with annotated source quotes visually indicating the source of the error.
+- Produces semantic HTML `<section>` elements.
+- Builtin linter which enforces consistent source text formatting.

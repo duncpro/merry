@@ -16,7 +16,9 @@ pub mod ast {
     #[derive(Debug, Clone)]
     pub struct Heading<'a> {
         pub hlevel: usize,
-        pub content: ttree::ast::Root<'a>
+        pub content: ttree::ast::Root<'a>,
+        pub span: SourceSpan<'a>,
+        pub pounds_span: SourceSpan<'a>
     }
 
     #[derive(Debug, Clone)]
@@ -64,7 +66,7 @@ pub mod ast {
 }
 
 use crate::{ltree, assert_matches};
-use crate::report::Issue;
+use crate::report::{Issue, AnnotatedSourceSection, Severity};
 use crate::scan::{SourceSpan, SourceLocation};
 use crate::ttree::{self, verify_ttree, AnyTTreeIssue, make_ttree};
 
@@ -136,11 +138,16 @@ fn make_list<'a, 'b>(ltree_list: &'a ltree::ast::List<'b>) -> ast::List<'b> {
 
 fn make_heading<'a, 'b>(line: &'a ltree::ast::Line<'b>) -> ast::Heading<'b> {
     let mut cursor = line.line_content.begin();
+    let begin = cursor.pos();
     let hlevel = cursor.repeat_match_symbol("#");
+    let pounds_end = cursor.pos();
     cursor.match_symbol(" ");
     let tail = cursor.pop_line();
     let content = make_ttree(&[tail]);
-    return ast::Heading { hlevel, content };
+    let end = cursor.pos();
+    let span = SourceSpan { source: cursor.source, begin, end };
+    let pounds_span = SourceSpan { source: cursor.source, begin, end: pounds_end };
+    return ast::Heading { hlevel, content, span, pounds_span };
 }
 
 fn make_verbatim<'a, 'b>(ltree_verbatim: &'a ltree::ast::Verbatim<'b>) -> ast::Verbatim<'b>
@@ -242,14 +249,36 @@ fn sectionize<'a, 'b>(block: &'a mut ast::Block<'b>, pos: usize) {
         heading: section_heading, children });
 }
 
+pub struct UnstructuredDocumentWarning<'a, 'b> {
+    heading: &'a ast::Heading<'b>
+}
+
 pub enum AnyMTreeIssue<'a, 'b> {
-    AnyTTreeIssue(AnyTTreeIssue<'a, 'b>)
+    AnyTTreeIssue(AnyTTreeIssue<'a, 'b>),
+    UnstructuredDocumentWarning(UnstructuredDocumentWarning<'a, 'b>)
 }
 
 impl<'a, 'b> From<AnyMTreeIssue<'a, 'b>> for Issue<'b> {
     fn from(value: AnyMTreeIssue<'a, 'b>) -> Self {
         match value {
             AnyMTreeIssue::AnyTTreeIssue(spec) => spec.into(),
+            AnyMTreeIssue::UnstructuredDocumentWarning(spec) => spec.into(),
+        }
+    }
+}
+
+impl<'a, 'b> From<UnstructuredDocumentWarning<'a, 'b>> for Issue<'b> {
+    fn from(value: UnstructuredDocumentWarning<'a, 'b>) -> Self {
+        let mut quote = AnnotatedSourceSection::from_span(&value.heading.span);
+        quote.highlight(value.heading.pounds_span.begin.byte_pos, 
+            value.heading.pounds_span.end.byte_pos);
+        Issue {
+            quote,
+            title: "Cannot return to ancestor section here",
+            subtext: "The target ancestor exists outside the current block. \
+                      Increase the heading level until \nit is at least greater than \
+                      that of the section immediately enclosing the current block.",
+            severity: Severity::Warning
         }
     }
 }
@@ -262,18 +291,45 @@ pub fn verify_mtree<'a, 'b>(root: &'a ast::Root<'b>) -> Vec<AnyMTreeIssue<'a, 'b
 
 pub fn verify_block<'a, 'b>(block: &'a ast::Block<'b>, issues: &mut Vec<AnyMTreeIssue<'a, 'b>>) {
     for child in &block.children {
-        if let ast::BlockChild::Block(child_block) = child {
-            verify_block(child_block, issues);
-            continue;
-        }
-        if let ast::BlockChild::Paragraph(paragraph) = child {
-            verify_paragraph(paragraph, issues);
-            continue;
-        }
-        if let ast::BlockChild::Verbatim(verbatim) = child {
-            verify_verbatim(verbatim, issues);
-            continue;
-        }
+        verify_block_child(child, issues);
+    }
+}
+
+pub fn verify_block_child<'a, 'b>(child: &'a ast::BlockChild<'b>, 
+    issues: &mut Vec<AnyMTreeIssue<'a, 'b>>)
+{
+    if let ast::BlockChild::Block(child_block) = child {
+        verify_block(child_block, issues);
+    }
+    if let ast::BlockChild::List(list) = child {
+        verify_list(list, issues);
+    }
+    if let ast::BlockChild::Paragraph(paragraph) = child {
+        verify_paragraph(paragraph, issues);
+    }
+    if let ast::BlockChild::Verbatim(verbatim) = child {
+        verify_verbatim(verbatim, issues);
+    }
+    if let ast::BlockChild::Heading(heading) = child {
+        let warning = UnstructuredDocumentWarning { heading };
+        issues.push(AnyMTreeIssue::UnstructuredDocumentWarning(warning));
+    }
+    if let ast::BlockChild::Section(section) = child {
+        verify_section(section, issues);
+    }
+}
+
+pub fn verify_list<'a, 'b>(list: &'a ast::List<'b>, issues: &mut Vec<AnyMTreeIssue<'a, 'b>>) {
+    for element in &list.elements {
+        verify_block(&element.content, issues);
+    }
+}
+
+pub fn verify_section<'a ,'b>(section: &'a ast::Section<'b>,
+    issues: &mut Vec<AnyMTreeIssue<'a, 'b>>)
+{
+    for child in &section.children {
+        verify_block_child(child, issues);
     }
 }
 
