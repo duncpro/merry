@@ -6,3 +6,7 @@ edition = "2021"
 [dependencies]
 unicode-segmentation = "1.11.0"
 unicode-width = "0.1.13"
+
+[[bin]]
+name = "merryc"
+path = "src/main.rs"

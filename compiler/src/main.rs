@@ -8,11 +8,11 @@ fn main() -> std::io::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let Some(input_file) = args.get(1) else {
         println!("No input file given.");
-        println!("Usage: merry <source file>");
+        println!("Usage: merryc <source file>");
         return Ok(());
     };
     println!();
-    println!("{}#{} merry {}v{}{} is compiling {}\"{}\"{}...", ansi::BOLD, ansi::DEFAULT_TEXT_STYLE,
+    println!("{}#{} merryc {}v{}{} is compiling {}\"{}\"{}...", ansi::BOLD, ansi::DEFAULT_TEXT_STYLE,
         ansi::FG_GREY, env!("CARGO_PKG_VERSION"), ansi::FG_DEFAULT,
         ansi::FG_GREY, input_file, ansi::FG_DEFAULT);
     let source_text = std::fs::read_to_string(input_file)?;
