@@ -7,7 +7,7 @@ pub fn codegen<'a, 'b, W>(mtree: &'a mtree::ast::Root<'b>, out: &mut W)
     write!(out,"<!DOCTYPE html>")?;
     write!(out, "<html>")?;
     write!(out, "<body>")?;
-    codegen_block(&mtree.block, out)?;
+    codegen_block_child(&mtree.child, out)?;
     write!(out, "</body>")?;
     write!(out, "</html>")?;
     return Ok(())
@@ -27,9 +27,9 @@ pub fn codegen_block_child<'a, 'b, W>(child: &'a mtree::ast::BlockChild<'b>, out
 {
     match child {
         mtree::ast::BlockChild::Paragraph(node) => codegen_paragraph(&node, out)?,
-        mtree::ast::BlockChild::DirectiveInvocation(_) => todo!(),
+        mtree::ast::BlockChild::Invoke(_) => todo!(),
         mtree::ast::BlockChild::Heading(node) => codegen_heading(&node, out)?,
-        mtree::ast::BlockChild::Block(node) => todo!("no semantic for nested block yet"),
+        mtree::ast::BlockChild::Block(node) => codegen_block(node, out)?,
         mtree::ast::BlockChild::List(node) => codegen_list(&node, out)?,
         mtree::ast::BlockChild::Verbatim(node) => codegen_verbatim_block(node, out)?,
         mtree::ast::BlockChild::Section(node) => codegen_section(&node, out)?,

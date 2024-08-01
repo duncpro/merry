@@ -35,7 +35,7 @@ pub mod ast {
     #[derive(Debug, Clone)]
     pub enum BlockChild<'a> {
         Paragraph(Paragraph<'a>),
-        DirectiveInvocation(DirectiveInvocation<'a>),
+        Invoke(DirectiveInvocation<'a>),
         Heading(Heading<'a>),
         Block(Block<'a>),
         List(List<'a>),
@@ -54,14 +54,16 @@ pub mod ast {
     }
 
     #[derive(Debug, Clone)]
-    pub struct Root<'a> {
-        pub block: Block<'a>
-    }
+    pub struct Root<'a> { pub child: BlockChild<'a> }
 
     #[derive(Debug, Clone)]
     pub struct Verbatim<'a> {
         pub trailing_qualifier: Option<ttree::ast::TrailingQualifier<'a>>,
         pub lines: Vec<SourceSpan<'a>>
+    }
+
+    impl<'a> DirectiveInvocation<'a> {
+        pub fn cmd(&self) -> Option<&str> { self.args.first().map(|s| s.as_ref()) }
     }
 }
 
@@ -73,7 +75,7 @@ use crate::ttree::{self, verify_ttree, AnyTTreeIssue, make_ttree};
 pub fn make_mtree<'a, 'b>(ltree: &'a ltree::ast::Root<'b>) -> ast::Root<'b> {
     let mut block = make_block(&ltree.block);
     sectionize_block(&mut block, 0);
-    return ast::Root { block }
+    return ast::Root { child: ast::BlockChild::Block(block) }
 }
 
 fn make_block<'a, 'b>(ltree_block: &'a ltree::ast::Block<'b>) -> ast::Block<'b> {
@@ -100,7 +102,7 @@ fn make_block<'a, 'b>(ltree_block: &'a ltree::ast::Block<'b>) -> ast::Block<'b> 
             if line.line_content.begin().at_symbol("|") {
                 push_paragraph!();
                 let node = parse_directive_invocation(line);
-                mtree_children.push(ast::BlockChild::DirectiveInvocation(node));
+                mtree_children.push(ast::BlockChild::Invoke(node));
                 continue;
             }
             paragraph_lines.push(line.line_content);
@@ -285,7 +287,7 @@ impl<'a, 'b> From<UnstructuredDocumentWarning<'a, 'b>> for Issue<'b> {
 
 pub fn verify_mtree<'a, 'b>(root: &'a ast::Root<'b>) -> Vec<AnyMTreeIssue<'a, 'b>> {
     let mut issues: Vec<AnyMTreeIssue<'a, 'b>> = Vec::new();
-    verify_block(&root.block, &mut issues);
+    verify_block_child(&root.child, &mut issues);
     return issues;
 }
 
