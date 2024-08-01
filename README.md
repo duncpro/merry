@@ -74,4 +74,26 @@ open output.html
 
     This markup will be rendered as `<li><div><p>Is</p></div></li><p>This It</p>`.
 
--
+- Italics
+
+    In Markdown text is italicized by surrounding it with asterisks.
+    ```md
+    This is *italicized* in markdown.
+    ```
+
+    In Merry text is italicized by surrounding it with tildes.
+    ```md2
+    This is ~italicized~ in Merry.
+    ```
+
+- Bold
+
+    In Markdown text is emboldened by surrounding it with double asterisks.
+    ```md
+    This is **emboldened** in markdown.
+    ```
+
+    In Merry text is emboldened by surrounding it with asterisks.
+    ```md
+    This is *emboldened*.
+    ```
