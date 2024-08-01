@@ -429,14 +429,17 @@ pub fn verify_trailing_qualifier<'a, 'b>(node_opt: &'a Option<ast::TrailingQuali
     issues: &mut Vec<AnyTTreeIssue<'a, 'b>>) 
 {
     let Some(node) = node_opt else { return; };
+    if node.close.is_none() {
+        let issue = UnclosedTrailingQualifierError { node };
+        issues.push(AnyTTreeIssue::UnclosedQualifierError(issue));
+        return; // Don't report split tags when the trailing qualifier is not closed.
+                // Doing so would report a ton of nonsensical errors since we are likely
+                // now interpreting an entire paragrpah as a tag.
+    }
     for tag in &node.tags {
         if let ast::Tag::Split(split_tag) = tag {
             issues.push(AnyTTreeIssue::SplitTagError(SplitTagError { tag: split_tag }));
         }
-    }
-    if node.close.is_none() {
-        let issue = UnclosedTrailingQualifierError { node };
-        issues.push(AnyTTreeIssue::UnclosedQualifierError(issue));
     }
 }
 
