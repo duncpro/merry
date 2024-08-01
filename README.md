@@ -94,6 +94,22 @@ open output.html
     ```
 
     In Merry text is emboldened by surrounding it with asterisks.
-    ```md
+    ```md2
     This is *emboldened*.
     ```
+    
+- Hyperlinks
+
+    In Merry there is no specific language construct for hyperlinks. Instead, hyperlinks are
+    achieved using two language features. Namely, qualified spans, and directives.
+
+    ```md2
+    [Google]{1} is the most popular search engine, but I prefer DuckDuckGo myself.
+    
+    | href 1 https://google.com
+    ````
+
+    The `href` directive expands all spans which are qualified with a given tag into hyperlinks
+    pointing to a given url.
+
+    There is no way to write a hyperlink inline like in Markdown.
