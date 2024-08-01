@@ -1,4 +1,5 @@
 # Merry
+
 Compiler for my markdown-esque markup language.
 
 > [!CAUTION]
@@ -13,14 +14,17 @@ Compiler for my markdown-esque markup language.
 > past, and it works well enough.
  
 ## Builing the Compiler
+
 ```
 git clone https://github.com/duncpro/merry
 git cd merry
 cargo build --release
 ```
+
 The executable binary will be created at `./target/release/merryc`.
 
 ## Compiling your first `.md2` source file
+
 ```
 touch input.md2
 merryc input.md2 output.html
@@ -31,3 +35,43 @@ open output.html
 - Rich error messages complete with annotated source quotes visually indicating the source of the error.
 - Produces semantic HTML `<section>` elements.
 - Builtin linter which enforces consistent source text formatting.
+- Italicize, embolden, and underline text.
+- Hyperlinks
+- Unordered lists
+- Paragraphs
+
+## Differences with Markdown
+- Unordered list declarator
+
+    Unlike markdown which has a number of functionally equivalent unordered list item declarators,
+    Merry has only one. That is the double hyphen. For example in Merry one would write...
+
+    ```md2
+    -- Is This It
+    -- Room on Fire
+    -- First Impressions of Earth
+    ```
+- Lists
+
+    In Markdown a block is attached to a list item by indenting the subsequent lines +4 spaces.
+    Instead the Merry compiler interprets list items as blocks themselves. 
+
+    The following markup will be rendered as `<li><div><p>Is This It</p></div></li>`
+    
+    ```md2
+    -- Is
+       This
+       It
+    ```
+
+    But if we do not indent +3 as the compiler expects, the list item will be broken.
+
+    ```md2
+    -- Is
+    This
+    It
+    ````
+
+    This markup will be rendered as `<li><div><p>Is</p></div></li><p>This It</p>`.
+
+-
