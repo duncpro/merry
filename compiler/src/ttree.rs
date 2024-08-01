@@ -54,7 +54,15 @@ pub mod ast {
         Delimited(DelimitedText<'a>),
         InlineVerbatim(InlineVerbatim<'a>),
         ImplicitSpace(ImplicitSpace),
-        Bracketed(BracketedText<'a>)
+        Bracketed(BracketedText<'a>),
+        HTMLWrap(HTMLWrap<'a>)
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct HTMLWrap<'a> {
+        pub prefix: String,
+        pub wrapped: Root<'a>,
+        pub suffix: String
     }
 
     #[derive(Debug, Clone)]
@@ -69,9 +77,42 @@ pub mod ast {
     #[derive(Debug, Clone)]
     pub struct ImplicitSpace;
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, Default)]
     pub struct Root<'a> {
         pub children: Vec<AnyText<'a>>
+    }
+
+    impl<'a> HTMLWrap<'a> {
+        pub fn new(prefix: String, suffix: String) -> Self {
+            Self { prefix, suffix, wrapped: Root::default() }
+        }
+    }
+
+    impl<'a> TrailingQualifier<'a> {
+        pub fn contains_tag(&self, pred: &str) -> bool {
+            for tag in &self.tags {
+                if let Tag::Unsplit(unsplit_tag) = tag {
+                    if pred == unsplit_tag.span.as_ref() {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        pub fn remove_tag(&mut self, pred: &str) -> bool {
+            let mut pred_index: Option<usize> = None;
+            for (i, tag) in self.tags.iter().enumerate() {
+                if let Tag::Unsplit(unsplit_tag) = tag {
+                    if pred == unsplit_tag.span.as_ref() {
+                        pred_index = Some(i);
+                        break;
+                    }
+                }
+            }
+            if let Some(index) = pred_index { self.tags.remove(index); }
+            return pred_index.is_some();
+        }
     }
 }
 
@@ -341,6 +382,10 @@ fn verify_root<'a, 'b>(root: &'a ast::Root<'b>, issues: &mut Vec<AnyTTreeIssue<'
         }
         if let ast::AnyText::InlineVerbatim(verbatim) = child {
             verify_verbatim(verbatim, issues);
+            continue;
+        }
+        if let ast::AnyText::HTMLWrap(wrap) = child {
+            verify_root(&wrap.wrapped, issues);
             continue;
         }
     }

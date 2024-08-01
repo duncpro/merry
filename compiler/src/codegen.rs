@@ -90,12 +90,22 @@ pub fn codegen_ttree<'a, 'b, W>(root: &'a ttree::ast::Root<'b>, out: &mut W)
             ttree::ast::AnyText::InlineVerbatim(node) => codegen_verbatim_inline(node, out)?,
             ttree::ast::AnyText::ImplicitSpace(node) => codegen_implicit_space(node, out)?,
             ttree::ast::AnyText::Bracketed(node) => codegen_bracket_span(node, out)?,
+            ttree::ast::AnyText::HTMLWrap(node) => codegen_ttree_wrap(node, out)?,
         }
     }
     return Ok(())
 }
 
-pub fn codegen_implicit_space<'a ,W>(_node: &'a ttree::ast::ImplicitSpace, out: &mut W) 
+pub fn codegen_ttree_wrap<'a, 'b, W>(node: &'a ttree::ast::HTMLWrap<'b>, out: &mut W) 
+-> std::io::Result<()> where W: std::io::Write 
+{
+    write!(out, "{}", node.prefix)?;
+    codegen_ttree(&node.wrapped, out)?;
+    write!(out, "{}", node.suffix)?;
+    return Ok(());
+}
+
+pub fn codegen_implicit_space<'a, W>(_node: &'a ttree::ast::ImplicitSpace, out: &mut W) 
 -> std::io::Result<()> where W: std::io::Write
 {
     write!(out, " ")    

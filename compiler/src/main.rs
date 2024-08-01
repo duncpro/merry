@@ -1,3 +1,4 @@
+use merry_compiler::builtins::apply_builtin_directives;
 use merry_compiler::codegen::codegen;
 use merry_compiler::report::{Issue, print_issue};
 use merry_compiler::mtree::{make_mtree, verify_mtree};
@@ -17,11 +18,12 @@ fn main() -> std::io::Result<()> {
     
     let source_text = std::fs::read_to_string(input_file)?;
     let ltree = make_ltree(&source_text);
-    let mtree = make_mtree(&ltree);
+    let mut mtree = make_mtree(&ltree);
     
     let mut issues: Vec<Issue> = Vec::new();
     for issue in verify_ltree(&ltree) { issues.push(issue.into()) }
     for issue in verify_mtree(&mtree) { issues.push(issue.into()) }
+    apply_builtin_directives(&mut mtree.child, &mut issues);
     println!("{}##{} compilation finished with {}{}{} issues.", ansi::BOLD, ansi::DEFAULT_TEXT_STYLE,
         ansi::FG_GREY, issues.len(), ansi::FG_DEFAULT);
     println!();

@@ -7,7 +7,8 @@
 
 use crate::ttree;
 
-pub fn rewrite_ttree(root: &mut ttree::ast::Root, rewrite_node: &impl Fn(&mut ttree::ast::AnyText)) 
+pub fn rewrite_ttree(root: &mut ttree::ast::Root, 
+    rewrite_node: &mut impl FnMut(&mut ttree::ast::AnyText)) 
 {
     for child in &mut root.children {
         (rewrite_node)(child);
@@ -16,6 +17,8 @@ pub fn rewrite_ttree(root: &mut ttree::ast::Root, rewrite_node: &impl Fn(&mut tt
                 rewrite_ttree(&mut node.child_root, rewrite_node),
             ttree::ast::AnyText::Bracketed(node) => 
                 rewrite_ttree(&mut node.child_root, rewrite_node),
+            ttree::ast::AnyText::HTMLWrap(node) => 
+                rewrite_ttree(&mut node.wrapped, rewrite_node),
             ttree::ast::AnyText::Plain(_) => {},
             ttree::ast::AnyText::InlineVerbatim(_) => {},
             ttree::ast::AnyText::ImplicitSpace(_) => {},
@@ -23,5 +26,31 @@ pub fn rewrite_ttree(root: &mut ttree::ast::Root, rewrite_node: &impl Fn(&mut tt
     }
 }
 
-use crate::mtree;
+use crate::mtree::ast::BlockChild;
+
+pub fn rewrite_mtree<'a>(node: &mut BlockChild<'a>, 
+    rewrite_node: &mut impl FnMut(&mut BlockChild<'a>)) 
+{
+    (rewrite_node)(node);
+    match node {
+        BlockChild::Block(block) => {
+            for child in &mut block.children { 
+                rewrite_mtree(child, rewrite_node);
+            }
+        },
+        BlockChild::Section(section) => {
+            for child in &mut section.children { 
+                rewrite_mtree(child, rewrite_node);
+            }
+        },
+        BlockChild::List(list) => {
+            for element in &mut list.elements {
+                for child in &mut element.content.children {
+                    rewrite_mtree(child, rewrite_node);
+                }
+            }
+        },
+        _ => ()
+    }
+}
 

@@ -8,12 +8,6 @@ pub mod ast {
     }
 
     #[derive(Debug, Clone)]
-    pub struct DirectiveInvocation<'a> {
-        pub args: Vec<SourceSpan<'a>>,
-        pub is_missing_end_quote: bool    
-    }
-
-    #[derive(Debug, Clone)]
     pub struct Heading<'a> {
         pub hlevel: usize,
         pub content: ttree::ast::Root<'a>,
@@ -61,9 +55,27 @@ pub mod ast {
         pub trailing_qualifier: Option<ttree::ast::TrailingQualifier<'a>>,
         pub lines: Vec<SourceSpan<'a>>
     }
+    
+
+    #[derive(Debug, Clone)]
+    pub struct DirectiveInvocation<'a> {
+        pub args: Vec<SourceSpan<'a>>,
+        pub is_missing_end_quote: bool    
+    }
 
     impl<'a> DirectiveInvocation<'a> {
         pub fn cmd(&self) -> Option<&str> { self.args.first().map(|s| s.as_ref()) }
+        pub fn args(&self) -> &[SourceSpan<'a>] { &self.args[1..] }
+    }
+
+    impl<'a> BlockChild<'a> {
+        pub fn children_mut(&mut self) -> Option<&mut Vec<BlockChild<'a>>> {
+            match self {
+                BlockChild::Block(block) => Some(&mut block.children),
+                BlockChild::Section(section) => Some(&mut section.children),
+                _ => None
+            }
+        }
     }
 }
 
