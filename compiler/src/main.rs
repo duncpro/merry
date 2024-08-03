@@ -23,9 +23,6 @@ fn main() -> std::io::Result<()> {
     let mut issues: Vec<Issue> = Vec::new();
     for issue in verify_ltree(&ltree) { issues.push(issue.into()) }
     for issue in verify_mtree(&mtree) { issues.push(issue.into()) }
-    println!("{}##{} compilation finished with {}{}{} issues.", ansi::BOLD, ansi::DEFAULT_TEXT_STYLE,
-        ansi::FG_GREY, issues.len(), ansi::FG_DEFAULT);
-    println!();
 
     let ctree = make_ctree(mtree, &mut issues);
     
@@ -42,5 +39,10 @@ fn main() -> std::io::Result<()> {
         .truncate(true)
         .open(output_file_path)?;
     codegen_html::codegen(&ctree, &mut output)?;
+
+    println!("{}##{} compilation finished with {}{}{} issues.", ansi::BOLD, ansi::DEFAULT_TEXT_STYLE,
+        ansi::FG_GREY, issues.len(), ansi::FG_DEFAULT);
+    println!();
+    
     return Ok(());
 }
