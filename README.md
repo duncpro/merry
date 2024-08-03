@@ -39,6 +39,8 @@ open output.html
 - Hyperlinks
 - Unordered lists
 - Paragraphs
+- Monospace Code Block
+- Monospace Code Span
 
 ## Differences with Markdown
 - Unordered list declarator
