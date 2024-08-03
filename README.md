@@ -157,7 +157,8 @@ open output.html
     | rewrite math npx katex -d -F mathml
     ````
 
-    The `rewrite` directive replaces a verbatim block by piping the contents to an
-    external process and then piping that processes output into the finished file.
+    The `rewrite` directive replaces all verbatim blocks marked with a given tag,
+    by piping the contents to an external process and then piping that process' output
+    into the finished file.
 
     The external process should produce valid HTML.
