@@ -182,3 +182,5 @@ open output.html
   the directive invocation with the HTML output of that process. This will be useful
   for generating plots/graphs on-demand during the compilation process by running
   an external file.
+- More lints.
+- Study parser combinators and rewrite the parser using them maybe.
