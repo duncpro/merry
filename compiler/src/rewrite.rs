@@ -55,6 +55,7 @@ pub fn rewrite_subtree_inline<'a>(node: &mut ctree::AnyInline<'a>,
         ctree::AnyInline::Plain(_) => None,
         ctree::AnyInline::ImplicitSpace(_) => None,
         ctree::AnyInline::InlineVerbatim(_) => None,
+        ctree::AnyInline::InlineCodeSnippet(_) => None,
     };
     if let Some(root) = maybe_root {
         for child_node in &mut root.children {

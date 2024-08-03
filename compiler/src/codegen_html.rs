@@ -17,7 +17,20 @@ pub fn codegen_node<W>(any_node: &ctree::BlockChild, out: &mut W)
         ctree::BlockChild::Paragraph  (node) => codegen_paragraph(node, out),
         ctree::BlockChild::HTML       (node) => codegen_html_block(node, out),
         ctree::BlockChild::Heading    (node) => codegen_heading(node, out),
+        ctree::BlockChild::CodeSnippet(node) => codegen_code_snippet(node, out),
     }
+}
+
+pub fn codegen_code_snippet<'a, W>(snippet: &ctree::CodeSnippet<'a>, out: &mut W)
+-> std::io::Result<()> where W: std::io::Write 
+{
+    write!(out, "<pre>")?;
+    for line in &snippet.lines {
+        out.write_all(line.as_ref().as_bytes())?;
+        write!(out, "\n")?;
+    }
+    write!(out, "</pre>")?;
+    return Ok(())
 }
 
 pub fn codegen_verbatim_block<W>(verbatim: &ctree::VerbatimBlock, out: &mut W) 
@@ -36,6 +49,7 @@ pub fn codegen_section<W>(section: &ctree::Section, out: &mut W)
 -> std::io::Result<()> where W: std::io::Write
 {
     write!(out, "<section>")?;
+    codegen_heading(&section.heading, out)?;
     for child in &section.children { codegen_node(child, out)?; }
     write!(out, "</section>")?;
     return Ok(());
@@ -102,15 +116,27 @@ pub fn codegen_inline_node<W>(node: &ctree::AnyInline, out: &mut W)
 -> std::io::Result<()> where W: std::io::Write
 {
     match node {
-        ctree::AnyInline::Plain         (node) => codegen_plain_text(node, out),
-        ctree::AnyInline::Hyperlink     (node) => codegen_hyperlink(node, out),
-        ctree::AnyInline::Emboldened    (node) => codegen_bold_text(node, out),
-        ctree::AnyInline::Italicized    (node) => codegen_italicized_text(node, out),
-        ctree::AnyInline::Underlined    (node) => codegen_underlined_text(node, out),
-        ctree::AnyInline::TaggedSpan    (node) => codegen_tagged_text(node, out),
-        ctree::AnyInline::ImplicitSpace (node) => codegen_implicit_space(node, out),
-        ctree::AnyInline::InlineVerbatim(node) => codegen_inline_verbatim(node, out),
+        ctree::AnyInline::Plain            (node) => codegen_plain_text(node, out),
+        ctree::AnyInline::Hyperlink        (node) => codegen_hyperlink(node, out),
+        ctree::AnyInline::Emboldened       (node) => codegen_bold_text(node, out),
+        ctree::AnyInline::Italicized       (node) => codegen_italicized_text(node, out),
+        ctree::AnyInline::Underlined       (node) => codegen_underlined_text(node, out),
+        ctree::AnyInline::TaggedSpan       (node) => codegen_tagged_text(node, out),
+        ctree::AnyInline::ImplicitSpace    (node) => codegen_implicit_space(node, out),
+        ctree::AnyInline::InlineVerbatim   (node) => codegen_inline_verbatim(node, out),
+        ctree::AnyInline::InlineCodeSnippet(node) => codegen_inline_code_snippet(node, out),
     }
+}
+
+pub fn codegen_inline_code_snippet<W>(node: &ctree::InlineCodeSnippet, out: &mut W)
+-> std::io::Result<()> where W: std::io::Write
+{
+    write!(out, "<code>")?;
+    for span in &node.inner_spans {
+        out.write_all(span.as_ref().as_bytes())?;
+    }
+    write!(out, "</code>")?;
+    return Ok(());
 }
 
 pub fn codegen_italicized_text<W>(node: &ctree::ItalicizedText, out: &mut W)

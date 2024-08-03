@@ -28,3 +28,18 @@ pub fn pad(text: &str, max_len: usize) -> String {
     return padded;
 }
 
+
+/// Removes the first element in `vec` matching the predicate `pred` and returns it.
+/// Or, if no element matches the predicate returns `None`.
+pub fn remove_first<T>(vec: &mut Vec<T>, pred: impl Fn(&T) -> bool) -> Option<T>
+{
+    let mut maybe_i: Option<usize> = None;
+    for (j, el) in vec.iter().enumerate() {
+        if (pred)(el) {
+            maybe_i = Some(j);
+            break;
+        }
+    }
+    if let Some(i) = maybe_i { return Some(vec.remove(i)); }
+    return None;
+}

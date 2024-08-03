@@ -4,12 +4,13 @@
 //! - `transform <tag> <command>` 
 
 use crate::assert_matches;
+use crate::misc::remove_first;
 use crate::mtree::ast::DirectiveInvocation;
 use crate::ctree::{self, AnyInline, HyperlinkText, InlineRoot, Context, Container};
 use crate::rewrite::{rewrite_subtrees, rewrite_inline_root};
 use crate::scan::SourceSpan;
 
-pub fn apply_builtins<'a, 'b, C>(invocation: DirectiveInvocation<'a>, scope: &mut C, 
+pub fn builtin_directives<'a, 'b, C>(invocation: DirectiveInvocation<'a>, scope: &mut C, 
     ctx: &mut Context<'a, 'b>) where C: Container<'a>
 {
     if let Some(cmd) = invocation.cmd() {
@@ -35,7 +36,7 @@ where C: Container<'a>
         if let Some(inline_content) = maybe_inline_content {
             rewrite_inline_root(inline_content, &mut |inline_node| {
                 if let ctree::AnyInline::TaggedSpan(tagged_span) = inline_node {
-                    if tagged_span.match_tag(tag.as_ref()).is_some() {
+                    if remove_first(&mut tagged_span.tags, |t| t.as_ref() == tag.as_ref()).is_some() {
                         let mut tmp = AnyInline::Hyperlink(HyperlinkText {
                             href: href.clone(),
                             child_root: InlineRoot::default()

@@ -13,8 +13,8 @@
 //! delimiters of spans for instance. Note that the CTree does contain references into the source 
 //! text as there are many cases where the source text can be copied verbatim into the finished document.
 
-use crate::assert_matches;
-use crate::builtins::apply_builtins;
+use crate::builtins::builtin_directives;
+use crate::misc::remove_first;
 use crate::report::Issue;
 use crate::scan::SourceSpan;
 use crate::ttree;
@@ -26,7 +26,7 @@ use crate::mtree;
 pub struct InlineRoot<'a> { pub children: Vec<AnyInline<'a>> }
 
 #[derive(Debug)]
-pub struct InlineVerbatim<'a> { pub content: Vec<SourceSpan<'a>>, tags: Vec<SourceSpan<'a>> }
+pub struct InlineVerbatim<'a> { pub content: Vec<SourceSpan<'a>>, pub tags: Vec<SourceSpan<'a>> }
 
 #[derive(Debug)]
 pub struct ImplicitSpace;
@@ -40,7 +40,8 @@ pub enum AnyInline<'a> {
     Underlined(UnderlinedText<'a>),
     TaggedSpan(TaggedSpan<'a>),
     ImplicitSpace(ImplicitSpace),
-    InlineVerbatim(InlineVerbatim<'a>)
+    InlineVerbatim(InlineVerbatim<'a>),
+    InlineCodeSnippet(InlineCodeSnippet<'a>)
 }
 
 // ## Inline Text Elements
@@ -62,13 +63,17 @@ pub struct UnderlinedText<'a> { pub child_root: InlineRoot<'a> }
 #[derive(Debug)]
 pub struct TaggedSpan<'a> { pub child_root: InlineRoot<'a>, pub tags: Vec<SourceSpan<'a>> }
 
+#[derive(Debug)]
+pub struct InlineCodeSnippet<'a> { pub inner_spans: Vec<SourceSpan<'a>> }
+
 // # Block Elements
 pub struct Root<'a> { pub block: Block<'a> }
-pub struct VerbatimBlock<'a> { pub lines: Vec<SourceSpan<'a>>, tags: Vec<SourceSpan<'a>> }
-pub struct Section<'a> { heading: Heading<'a>, pub children: Vec<BlockChild<'a>> }
+pub struct VerbatimBlock<'a> { pub lines: Vec<SourceSpan<'a>>, pub tags: Vec<SourceSpan<'a>> }
+pub struct Section<'a> { pub heading: Heading<'a>, pub children: Vec<BlockChild<'a>> }
 pub struct List<'a> { pub elements: Vec<ListElement<'a>> }
 pub struct Heading<'a> { pub hlevel: usize, pub content: InlineRoot<'a> }
 pub struct Paragraph<'a> { pub content: InlineRoot<'a> }
+pub struct CodeSnippet<'a> { pub lines: Vec<SourceSpan<'a>> }
 
 #[derive(Default)]
 pub struct Block<'a> { pub children: Vec<BlockChild<'a>> }
@@ -85,7 +90,8 @@ pub enum BlockChild<'a> {
     Block(Block<'a>),
     Paragraph(Paragraph<'a>),
     HTML(HTML<'a>),
-    Heading(Heading<'a>)
+    Heading(Heading<'a>),
+    CodeSnippet(CodeSnippet<'a>)
 }
 
 
@@ -103,20 +109,6 @@ impl<'a> Container<'a> for Section<'a> {
 
 impl<'a> Container<'a> for Block<'a> {
     fn children_mut(&mut self) -> &mut Vec<BlockChild<'a>> { &mut self.children }
-}
-
-impl<'a> TaggedSpan<'a> {
-    pub fn match_tag(&mut self, pred: &str) -> Option<SourceSpan<'a>> {
-        let mut maybe_i: Option<usize> = None;;
-        for (j, tag) in self.tags.iter().enumerate() {
-            if tag.as_ref() == pred {
-                maybe_i = Some(j);
-                break;
-            }
-        }
-        if let Some(i) = maybe_i { return Some(self.tags.remove(i)); }
-        return None;
-    }
 }
 
 // # List Elements
@@ -156,7 +148,7 @@ fn interpret_mtree_node<'a, 'b>(ctree_parent: &mut impl Container<'a>,
         },
         mtree::ast::BlockChild::VerbatimBlock(mtree_v) => {
             let ctree_v = interpret_mtree_verbatim(mtree_v);
-            ctree_parent.children_mut().push(BlockChild::Verbatim(ctree_v));
+            ctree_parent.children_mut().push(ctree_v);
         },
         mtree::ast::BlockChild::Section(mtree_s) => {
             let ctree_s = interpret_mtree_section(mtree_s, ctx);
@@ -184,7 +176,7 @@ fn interpret_mtree_block<'a, 'b>(ast_block: mtree::ast::Block<'a>, ctx: &mut Con
 {
     let mut ctree_block = Block::default();
     for ast_child in ast_block.children {
-        let ctree_child = interpret_mtree_node(&mut ctree_block, ast_child, ctx);
+        interpret_mtree_node(&mut ctree_block, ast_child, ctx);
     }
     return ctree_block;
 }
@@ -200,11 +192,16 @@ fn interpret_mtree_list<'a, 'b>(ast_l: mtree::ast::List<'a>, ctx: &mut Context<'
     return List { elements: ctree_elements };
 }
 
-fn interpret_mtree_verbatim<'a>(ast_v: mtree::ast::VerbatimBlock<'a>) -> VerbatimBlock<'a> {
-    VerbatimBlock {
-        lines: ast_v.lines,
-        tags: make_tags(ast_v.trailing_qualifier)
+fn interpret_mtree_verbatim<'a>(ast_v: mtree::ast::VerbatimBlock<'a>) -> BlockChild<'a> {
+    let mut tags = make_tags(ast_v.trailing_qualifier);
+
+    if remove_first(&mut tags, |t| t.as_ref() == "m").is_some() {
+        // TODO: Report issue if there are other tags on this verbatim block.
+        //       The m tag cannot coexist with other tags on a verbatim block.
+        return BlockChild::CodeSnippet(CodeSnippet { lines: ast_v.lines });
     }
+    
+    return BlockChild::Verbatim(VerbatimBlock { lines: ast_v.lines, tags });
 }
 
 fn interpret_mtree_section<'a, 'b>(ast_s: mtree::ast::Section<'a>, ctx: &mut Context<'a, 'b>) 
@@ -225,7 +222,7 @@ fn interpret_mtree_section<'a, 'b>(ast_s: mtree::ast::Section<'a>, ctx: &mut Con
 fn interpret_invocation<'a, 'b>(scope: &mut impl Container<'a>, 
     invocation: mtree::ast::DirectiveInvocation<'a>, ctx: &mut Context<'a, 'b>)
 {
-    apply_builtins(invocation, scope, ctx);
+    builtin_directives(invocation, scope, ctx);
 }
 
 // # Interpret *TTree*
@@ -257,10 +254,18 @@ fn interpret_ttree_node<'a>(inline_ast_node: ttree::ast::AnyInline<'a>) -> AnyIn
 }
 
 fn interpret_inline_verbatim<'a>(ast_node: ttree::ast::InlineVerbatim<'a>) -> AnyInline<'a> {
-    AnyInline::InlineVerbatim(InlineVerbatim { 
-        content: ast_node.inner_spans,
-        tags: make_tags(ast_node.trailing_qualifier)
-    })
+    let mut tags = make_tags(ast_node.trailing_qualifier);
+
+    if remove_first(&mut tags, |t| t.as_ref() == "m").is_some() {
+        let inner_spans = ast_node.inner_spans;
+        let snippet = AnyInline::InlineCodeSnippet(InlineCodeSnippet { inner_spans });
+        let mut wrapper = TaggedSpan { child_root: InlineRoot::default(), tags };
+        wrapper.child_root.children.push(snippet);
+        return AnyInline::TaggedSpan(wrapper);
+    }
+
+    let content = ast_node.inner_spans;
+    return AnyInline::InlineVerbatim(InlineVerbatim { content, tags });
 }
 
 fn interpret_delimeted_text<'a>(ast_node: ttree::ast::DelimitedText<'a>) -> AnyInline<'a> {
