@@ -138,5 +138,5 @@ open output.html
     the inline verbatim to be a generic monospace code span.
 
     ```md2
-    Consider using `std::mem::swap` instead of cloning when possible.
+    Consider using `std::mem::swap`{m} instead of cloning when possible.
     ```
