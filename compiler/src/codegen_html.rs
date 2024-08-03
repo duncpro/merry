@@ -18,6 +18,7 @@ pub fn codegen_node<W>(any_node: &ctree::BlockChild, out: &mut W)
         ctree::BlockChild::HTML       (node) => codegen_html_block(node, out),
         ctree::BlockChild::Heading    (node) => codegen_heading(node, out),
         ctree::BlockChild::CodeSnippet(node) => codegen_code_snippet(node, out),
+        ctree::BlockChild::None              => Ok(()),
     }
 }
 
@@ -91,7 +92,7 @@ pub fn codegen_paragraph<W>(paragraph: &ctree::Paragraph, out: &mut W)
 pub fn codegen_html_block<W>(node: &ctree::HTML, out: &mut W) 
 -> std::io::Result<()> where W: std::io::Write
 {
-    node.value.encode(out)
+    node.value.write(out)
 }
 
 pub fn codegen_heading<W>(heading: &ctree::Heading, out: &mut W)
@@ -123,9 +124,17 @@ pub fn codegen_inline_node<W>(node: &ctree::AnyInline, out: &mut W)
         ctree::AnyInline::Underlined       (node) => codegen_underlined_text(node, out),
         ctree::AnyInline::TaggedSpan       (node) => codegen_tagged_text(node, out),
         ctree::AnyInline::ImplicitSpace    (node) => codegen_implicit_space(node, out),
-        ctree::AnyInline::InlineVerbatim   (node) => codegen_inline_verbatim(node, out),
+        ctree::AnyInline::Verbatim   (node) => codegen_inline_verbatim(node, out),
         ctree::AnyInline::InlineCodeSnippet(node) => codegen_inline_code_snippet(node, out),
+        ctree::AnyInline::HTML       (node) => codegen_inline_html(node, out),
+        ctree::AnyInline::None                    => Ok(()),
     }
+}
+
+pub fn codegen_inline_html<W>(inline_html: &ctree::InlineHTML, out: &mut W) 
+-> std::io::Result<()> where W: std::io::Write
+{
+    inline_html.value.write(out)
 }
 
 pub fn codegen_inline_code_snippet<W>(node: &ctree::InlineCodeSnippet, out: &mut W)

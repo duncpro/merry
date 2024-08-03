@@ -14,6 +14,7 @@
 //! text as there are many cases where the source text can be copied verbatim into the finished document.
 
 use crate::builtins::builtin_directives;
+use crate::misc::Writable;
 use crate::misc::remove_first;
 use crate::report::Issue;
 use crate::scan::SourceSpan;
@@ -40,8 +41,14 @@ pub enum AnyInline<'a> {
     Underlined(UnderlinedText<'a>),
     TaggedSpan(TaggedSpan<'a>),
     ImplicitSpace(ImplicitSpace),
-    InlineVerbatim(InlineVerbatim<'a>),
-    InlineCodeSnippet(InlineCodeSnippet<'a>)
+    Verbatim(InlineVerbatim<'a>),
+    InlineCodeSnippet(InlineCodeSnippet<'a>),
+    HTML(InlineHTML<'a>),
+
+    /// This node has no effect during code-generation. It is however useful whem
+    /// manipulating the tree in memory. Specifically, this node can be used `std::mem::swap`,
+    /// to remove a node from the CTree before replacing it with another node.
+    None 
 }
 
 // ## Inline Text Elements
@@ -66,23 +73,41 @@ pub struct TaggedSpan<'a> { pub child_root: InlineRoot<'a>, pub tags: Vec<Source
 #[derive(Debug)]
 pub struct InlineCodeSnippet<'a> { pub inner_spans: Vec<SourceSpan<'a>> }
 
+#[derive(Debug)]
+pub struct InlineHTML<'a> { pub value: Box<dyn Writable + 'a> }
+
 // # Block Elements
+
+#[derive(Debug)]
 pub struct Root<'a> { pub block: Block<'a> }
+
+#[derive(Debug)]
 pub struct VerbatimBlock<'a> { pub lines: Vec<SourceSpan<'a>>, pub tags: Vec<SourceSpan<'a>> }
+
+#[derive(Debug)]
 pub struct Section<'a> { pub heading: Heading<'a>, pub children: Vec<BlockChild<'a>> }
+
+#[derive(Debug)]
 pub struct List<'a> { pub elements: Vec<ListElement<'a>> }
+
+#[derive(Debug)]
 pub struct Heading<'a> { pub hlevel: usize, pub content: InlineRoot<'a> }
+
+#[derive(Debug)]
 pub struct Paragraph<'a> { pub content: InlineRoot<'a> }
+
+#[derive(Debug)]
 pub struct CodeSnippet<'a> { pub lines: Vec<SourceSpan<'a>> }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Block<'a> { pub children: Vec<BlockChild<'a>> }
 
 /// An arbitrary piece of HTML which will be embedded into the finished document during the 
 /// code-generation phase.
 #[derive(Debug)]
-pub struct HTML<'a> { pub value: Box<dyn HTMLEncodable<'a>> }
+pub struct HTML<'a> { pub value: Box<dyn Writable + 'a> }
 
+#[derive(Debug)]
 pub enum BlockChild<'a> {
     Verbatim(VerbatimBlock<'a>),
     Section(Section<'a>),
@@ -91,28 +116,48 @@ pub enum BlockChild<'a> {
     Paragraph(Paragraph<'a>),
     HTML(HTML<'a>),
     Heading(Heading<'a>),
-    CodeSnippet(CodeSnippet<'a>)
+    CodeSnippet(CodeSnippet<'a>),
+    None
 }
 
-
-pub trait HTMLEncodable<'a>: std::fmt::Debug {
-    fn encode(&self, write: &mut dyn std::io::Write) -> std::io::Result<()>;
-}
 
 pub trait Container<'a> {
     fn children_mut(&mut self) -> &mut Vec<BlockChild<'a>>;
 }
 
 impl<'a> Container<'a> for Section<'a> {
-    fn children_mut(&mut self) -> &mut Vec<BlockChild<'a>> { &mut self.children }
+    fn children_mut(&mut self) -> &mut Vec<BlockChild<'a>> {
+        &mut self.children 
+    }
 }
 
 impl<'a> Container<'a> for Block<'a> {
-    fn children_mut(&mut self) -> &mut Vec<BlockChild<'a>> { &mut self.children }
+    fn children_mut(&mut self) -> &mut Vec<BlockChild<'a>> { 
+        &mut self.children 
+    }
+}
+
+impl<'a> BlockChild<'a> {
+    /// Returns an exclusive reference to the inline content of this node (if it has some
+    /// inline content), otherwise returns `None`. 
+    ///
+    /// Currently, the following node types have inline content....
+    /// - Heading
+    /// - Section (its heading's inline content)
+    /// - Paragraph
+    pub fn inline_content_mut(&mut self) -> Option<&mut InlineRoot<'a>> {
+        match self {
+            BlockChild::Section(node) => Some(&mut node.heading.content),
+            BlockChild::Paragraph(node) => Some(&mut node.content),
+            BlockChild::Heading(node) => Some(&mut node.content),
+            _ => None
+        }
+    }
 }
 
 // # List Elements
 
+#[derive(Debug)]
 pub struct ListElement<'a> { pub content: Block<'a> }
 
 // # Interpret *MTree*
@@ -265,7 +310,7 @@ fn interpret_inline_verbatim<'a>(ast_node: ttree::ast::InlineVerbatim<'a>) -> An
     }
 
     let content = ast_node.inner_spans;
-    return AnyInline::InlineVerbatim(InlineVerbatim { content, tags });
+    return AnyInline::Verbatim(InlineVerbatim { content, tags });
 }
 
 fn interpret_delimeted_text<'a>(ast_node: ttree::ast::DelimitedText<'a>) -> AnyInline<'a> {
@@ -306,6 +351,5 @@ fn make_tags<'a>(ast_node: Option<ttree::ast::TrailingQualifier<'a>>)
             }
         }
     }
-    return tags;
-    
+    return tags;    
 }

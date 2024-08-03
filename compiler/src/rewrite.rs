@@ -54,8 +54,10 @@ pub fn rewrite_subtree_inline<'a>(node: &mut ctree::AnyInline<'a>,
         ctree::AnyInline::TaggedSpan(child_node) => Some(&mut child_node.child_root),
         ctree::AnyInline::Plain(_) => None,
         ctree::AnyInline::ImplicitSpace(_) => None,
-        ctree::AnyInline::InlineVerbatim(_) => None,
+        ctree::AnyInline::Verbatim(_) => None,
         ctree::AnyInline::InlineCodeSnippet(_) => None,
+        ctree::AnyInline::HTML(_) => None,
+        ctree::AnyInline::None => None,
     };
     if let Some(root) = maybe_root {
         for child_node in &mut root.children {
@@ -71,3 +73,4 @@ pub fn rewrite_inline_root<'a>(root: &mut ctree::InlineRoot<'a>,
         rewrite_subtree_inline(child_node, rewrite_node);
     }
 }
+

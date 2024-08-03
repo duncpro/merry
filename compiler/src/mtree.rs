@@ -72,7 +72,14 @@ pub mod ast {
 
     impl<'a> DirectiveInvocation<'a> {
         pub fn cmd(&self) -> Option<&str> { self.args.first().map(|s| s.as_ref()) }
+        
         pub fn args<'b>(&'b self) -> &'b [SourceSpan<'a>] { &self.args[1..] }
+        
+        pub fn take_args(self) -> Vec<SourceSpan<'a>> {
+            let mut args = self.args;
+            if args.len() > 0 { args.remove(0); }
+            return args;
+        }
     }
 }
 

@@ -43,3 +43,7 @@ pub fn remove_first<T>(vec: &mut Vec<T>, pred: impl Fn(&T) -> bool) -> Option<T>
     if let Some(i) = maybe_i { return Some(vec.remove(i)); }
     return None;
 }
+
+pub trait Writable: std::fmt::Debug {
+    fn write(&self, out: &mut dyn std::io::Write) -> std::io::Result<()>;
+}

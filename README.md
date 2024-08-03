@@ -142,3 +142,22 @@ open output.html
     ```md2
     Consider using `std::mem::swap`{m} instead of cloning when possible.
     ```
+
+- Mathematics
+
+    Merry does not support mathematics out of the box unlike some popular flavors of Markdown.
+    However, it is possible to typeset math via an external tool like [KaTeX](https://katex.org),
+    using the builtin `rewrite` directive.
+
+    ````md2
+    ```
+    a^2 + b^2 = c^2
+    ```{math}
+
+    | rewrite math npx katex -d -F mathml
+    ````
+
+    The `rewrite` directive replaces a verbatim block by piping the contents to an
+    external process and then piping that processes output into the finished file.
+
+    The external process should produce valid HTML.
