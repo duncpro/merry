@@ -1,8 +1,13 @@
+//! This module provides the facilities needed to construct an *MTree* given an *LTree*.
+//! The *MTree* is the fully specified representation of the source text. 
+//! All syntactic units are represented in the *MTree* along with their denormalized
+//! positions in the source text. In short, the *MTree* is the finished AST of the source text.
+
 pub mod ast {
     use crate::ttree;
     use crate::scan::SourceSpan;
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug)]
     pub struct Paragraph<'a> {
         pub content: ttree::ast::Root<'a>
     }
@@ -15,49 +20,51 @@ pub mod ast {
         pub pounds_span: SourceSpan<'a>
     }
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug)]
     pub struct Block<'a> {
         pub children: Vec<BlockChild<'a>>
     }
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug)]
     pub struct Section<'a> {
         pub heading: Heading<'a>,
         pub children: Vec<BlockChild<'a>>
     }
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug)]
     pub enum BlockChild<'a> {
         Paragraph(Paragraph<'a>),
         Invoke(DirectiveInvocation<'a>),
         Heading(Heading<'a>),
         Block(Block<'a>),
         List(List<'a>),
-        Verbatim(Verbatim<'a>),
+        VerbatimBlock(VerbatimBlock<'a>),
         Section(Section<'a>)
     }
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug)]
     pub struct List<'a> {
         pub elements: Vec<ListElement<'a>>
     }
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug)]
     pub struct ListElement<'a> {
         pub content: Block<'a>
     }
 
-    #[derive(Debug, Clone)]
-    pub struct Root<'a> { pub child: BlockChild<'a> }
+    #[derive(Debug)]
+    pub struct Root<'a> { pub block: Block<'a> }
 
-    #[derive(Debug, Clone)]
-    pub struct Verbatim<'a> {
+    /// A block of text to be interpreted verbatim. All special characters lose their
+    /// meaning in a verbatim block. For instance, `~abc~` will not be italicized and
+    /// `#` will not begin a new heading when placed in a verbatim block.
+    #[derive(Debug)]
+    pub struct VerbatimBlock<'a> {
         pub trailing_qualifier: Option<ttree::ast::TrailingQualifier<'a>>,
         pub lines: Vec<SourceSpan<'a>>
     }
     
-
-    #[derive(Debug, Clone)]
+    #[derive(Debug)]
     pub struct DirectiveInvocation<'a> {
         pub args: Vec<SourceSpan<'a>>,
         pub is_missing_end_quote: bool    
@@ -65,29 +72,19 @@ pub mod ast {
 
     impl<'a> DirectiveInvocation<'a> {
         pub fn cmd(&self) -> Option<&str> { self.args.first().map(|s| s.as_ref()) }
-        pub fn args(&self) -> &[SourceSpan<'a>] { &self.args[1..] }
-    }
-
-    impl<'a> BlockChild<'a> {
-        pub fn children_mut(&mut self) -> Option<&mut Vec<BlockChild<'a>>> {
-            match self {
-                BlockChild::Block(block) => Some(&mut block.children),
-                BlockChild::Section(section) => Some(&mut section.children),
-                _ => None
-            }
-        }
+        pub fn args<'b>(&'b self) -> &'b [SourceSpan<'a>] { &self.args[1..] }
     }
 }
 
 use crate::{ltree, assert_matches};
 use crate::report::{Issue, AnnotatedSourceSection, Severity};
 use crate::scan::{SourceSpan, SourceLocation};
-use crate::ttree::{self, verify_ttree, AnyTTreeIssue, make_ttree};
+use crate::ttree::{self, verify_ttree, AnyTTreeIssue, parse_ttree};
 
 pub fn make_mtree<'a, 'b>(ltree: &'a ltree::ast::Root<'b>) -> ast::Root<'b> {
     let mut block = make_block(&ltree.block);
     sectionize_block(&mut block, 0);
-    return ast::Root { child: ast::BlockChild::Block(block) }
+    return ast::Root { block }
 }
 
 fn make_block<'a, 'b>(ltree_block: &'a ltree::ast::Block<'b>) -> ast::Block<'b> {
@@ -96,7 +93,7 @@ fn make_block<'a, 'b>(ltree_block: &'a ltree::ast::Block<'b>) -> ast::Block<'b> 
 
     macro_rules! push_paragraph { () => {
         if paragraph_lines.len() > 0 {
-            let content = ttree::make_ttree(paragraph_lines.as_slice());
+            let content = parse_ttree(paragraph_lines.as_slice());
             let paragraph = ast::Paragraph { content };
             mtree_children.push(ast::BlockChild::Paragraph(paragraph));
             paragraph_lines.clear();
@@ -128,7 +125,7 @@ fn make_block<'a, 'b>(ltree_block: &'a ltree::ast::Block<'b>) -> ast::Block<'b> 
         }
         if let ltree::ast::BlockChild::Verbatim(ltree_verbatim) = ltree_child {
             let mtree_verbatim = make_verbatim(ltree_verbatim);
-            mtree_children.push(ast::BlockChild::Verbatim(mtree_verbatim));
+            mtree_children.push(ast::BlockChild::VerbatimBlock(mtree_verbatim));
             continue;
         }
         if let ltree::ast::BlockChild::List(ltree_list) = ltree_child {
@@ -157,21 +154,21 @@ fn make_heading<'a, 'b>(line: &'a ltree::ast::Line<'b>) -> ast::Heading<'b> {
     let pounds_end = cursor.pos();
     cursor.match_symbol(" ");
     let tail = cursor.pop_line();
-    let content = make_ttree(&[tail]);
+    let content = parse_ttree(&[tail]);
     let end = cursor.pos();
     let span = SourceSpan { source: cursor.source, begin, end };
     let pounds_span = SourceSpan { source: cursor.source, begin, end: pounds_end };
     return ast::Heading { hlevel, content, span, pounds_span };
 }
 
-fn make_verbatim<'a, 'b>(ltree_verbatim: &'a ltree::ast::Verbatim<'b>) -> ast::Verbatim<'b>
+fn make_verbatim<'a, 'b>(ltree_verbatim: &'a ltree::ast::Verbatim<'b>) -> ast::VerbatimBlock<'b>
 {
     let mut trailing_qualifier: Option<ttree::ast::TrailingQualifier<'b>> = None;
     if let Some(tail) = ltree_verbatim.tail {
         trailing_qualifier = ttree::parse_misc_trailing_qualifier(&[tail]);
     }
     let lines: Vec<SourceSpan<'b>> = ltree_verbatim.lines.clone();
-    return ast::Verbatim { lines, trailing_qualifier };
+    return ast::VerbatimBlock { lines, trailing_qualifier };
 }
 
 #[allow(unused_assignments)]
@@ -238,8 +235,9 @@ fn sectionize_block<'a, 'b>(block: &'a mut ast::Block<'b>, hlevel_lb: usize) {
 }
 
 fn sectionize<'a, 'b>(block: &'a mut ast::Block<'b>, pos: usize) {
-    assert_matches!(block.children[pos], ast::BlockChild::Heading(ref heading_ref));
+    assert_matches!(&block.children[pos], ast::BlockChild::Heading(heading_ref));
     let section_heading = heading_ref.clone();
+    
     let mut children: Vec<ast::BlockChild<'b>> = Vec::new();
 
     let i: usize = pos + 1;
@@ -299,7 +297,7 @@ impl<'a, 'b> From<UnstructuredDocumentWarning<'a, 'b>> for Issue<'b> {
 
 pub fn verify_mtree<'a, 'b>(root: &'a ast::Root<'b>) -> Vec<AnyMTreeIssue<'a, 'b>> {
     let mut issues: Vec<AnyMTreeIssue<'a, 'b>> = Vec::new();
-    verify_block_child(&root.child, &mut issues);
+    verify_block(&root.block, &mut issues);
     return issues;
 }
 
@@ -321,7 +319,7 @@ pub fn verify_block_child<'a, 'b>(child: &'a ast::BlockChild<'b>,
     if let ast::BlockChild::Paragraph(paragraph) = child {
         verify_paragraph(paragraph, issues);
     }
-    if let ast::BlockChild::Verbatim(verbatim) = child {
+    if let ast::BlockChild::VerbatimBlock(verbatim) = child {
         verify_verbatim(verbatim, issues);
     }
     if let ast::BlockChild::Heading(heading) = child {
@@ -356,7 +354,7 @@ pub fn verify_paragraph<'a, 'b>(paragraph: &'a ast::Paragraph<'b>,
     }
 }
 
-pub fn verify_verbatim<'a, 'b>(verbatim: &'a ast::Verbatim<'b>, 
+pub fn verify_verbatim<'a, 'b>(verbatim: &'a ast::VerbatimBlock<'b>, 
     issues: &mut Vec<AnyMTreeIssue<'a, 'b>>)
 {
     // TODO: RemoveAllocation

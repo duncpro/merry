@@ -49,22 +49,17 @@ pub mod ast {
     pub struct PlainText<'a> { pub span: SourceSpan<'a> }
 
     #[derive(Debug, Clone)]
-    pub enum AnyText<'a> {
+    pub enum AnyInline<'a> {
         Plain(PlainText<'a>),
         Delimited(DelimitedText<'a>),
         InlineVerbatim(InlineVerbatim<'a>),
         ImplicitSpace(ImplicitSpace),
         Bracketed(BracketedText<'a>),
-        HTMLWrap(HTMLWrap<'a>)
     }
 
-    #[derive(Clone, Debug)]
-    pub struct HTMLWrap<'a> {
-        pub prefix: String,
-        pub wrapped: Root<'a>,
-        pub suffix: String
-    }
-
+    /// A span of text in which all special symbols lose their meaning. For instance,
+    /// `~abc~` will be interpreted verbatim as a tilde followed by `abc` followed by
+    /// a tilde, instead of being interpreted as an italicized span `abc`.
     #[derive(Debug, Clone)]
     pub struct InlineVerbatim<'a> { 
         pub inner_spans: Vec<SourceSpan<'a>>,
@@ -79,44 +74,12 @@ pub mod ast {
 
     #[derive(Debug, Clone, Default)]
     pub struct Root<'a> {
-        pub children: Vec<AnyText<'a>>
+        pub children: Vec<AnyInline<'a>>
     }
 
-    impl<'a> HTMLWrap<'a> {
-        pub fn new(prefix: String, suffix: String) -> Self {
-            Self { prefix, suffix, wrapped: Root::default() }
-        }
-    }
-
-    impl<'a> TrailingQualifier<'a> {
-        pub fn contains_tag(&self, pred: &str) -> bool {
-            for tag in &self.tags {
-                if let Tag::Unsplit(unsplit_tag) = tag {
-                    if pred == unsplit_tag.span.as_ref() {
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }
-
-        pub fn remove_tag(&mut self, pred: &str) -> bool {
-            let mut pred_index: Option<usize> = None;
-            for (i, tag) in self.tags.iter().enumerate() {
-                if let Tag::Unsplit(unsplit_tag) = tag {
-                    if pred == unsplit_tag.span.as_ref() {
-                        pred_index = Some(i);
-                        break;
-                    }
-                }
-            }
-            if let Some(index) = pred_index { self.tags.remove(index); }
-            return pred_index.is_some();
-        }
-    }
 }
 
-pub fn make_ttree<'a, 'b>(lines: &'a [SourceSpan<'b>]) -> ast::Root<'b> {
+pub fn parse_ttree<'a, 'b>(lines: &'a [SourceSpan<'b>]) -> ast::Root<'b> {
     let line_cursor = lines[0].begin();
     let mut ctx: ParseContext<'a, 'b> = ParseContext { lines, next_line_i: 1, line_cursor };
     return parse_root(&mut ctx, None);
@@ -143,12 +106,12 @@ use crate::scan::{SourceSpan, SourceLocation, ForwardCursor};
 #[allow(unused_assignments)]
 fn parse_root<'a, 'b>(ctx: &mut ParseContext<'a, 'b>, stop_at: Option<&str>) -> ast::Root<'b>
 {
-    let mut children: Vec<ast::AnyText<'b>> = Vec::new();
+    let mut children: Vec<ast::AnyInline<'b>> = Vec::new();
 
     let mut pt_begin: Option<SourceLocation> = None;
     macro_rules! push_pt { () => {
         if let Some(begin) = pt_begin {
-            children.push(ast::AnyText::Plain(ast::PlainText { span: SourceSpan { 
+            children.push(ast::AnyInline::Plain(ast::PlainText { span: SourceSpan { 
                 begin, end: ctx.line_cursor.pos(), source: ctx.line_cursor.source } }));
             pt_begin = None;
         }
@@ -158,7 +121,7 @@ fn parse_root<'a, 'b>(ctx: &mut ParseContext<'a, 'b>, stop_at: Option<&str>) -> 
         if is_totally_exhausted(ctx) { break; }
         if is_line_exhausted(ctx) {
             push_pt!();
-            children.push(ast::AnyText::ImplicitSpace(ast::ImplicitSpace)); 
+            children.push(ast::AnyInline::ImplicitSpace(ast::ImplicitSpace)); 
             advance_line(ctx);
             continue;
         }
@@ -175,7 +138,7 @@ fn parse_root<'a, 'b>(ctx: &mut ParseContext<'a, 'b>, stop_at: Option<&str>) -> 
             let trailing_qualifier = parse_trailing_qualifier(ctx);
             let delim_text = ast::DelimitedText { delim_kind, open,
                 child_root, close, trailing_qualifier };
-            children.push(ast::AnyText::Delimited(delim_text));
+            children.push(ast::AnyInline::Delimited(delim_text));
             continue;
         }
         if ctx.line_cursor.at_symbol("[") {
@@ -186,13 +149,13 @@ fn parse_root<'a, 'b>(ctx: &mut ParseContext<'a, 'b>, stop_at: Option<&str>) -> 
             let trailing_qualifier = parse_trailing_qualifier(ctx);
             let brack_text = ast::BracketedText { open, close, child_root,
                 trailing_qualifier };
-            children.push(ast::AnyText::Bracketed(brack_text));
+            children.push(ast::AnyInline::Bracketed(brack_text));
             continue;
         }
         if ctx.line_cursor.at_symbol("`") {
             push_pt!();
             let verbatim = parse_inline_verbatim(ctx);
-            children.push(ast::AnyText::InlineVerbatim(verbatim));
+            children.push(ast::AnyInline::InlineVerbatim(verbatim));
             continue;
             
         }
@@ -372,20 +335,16 @@ pub fn verify_ttree<'a, 'b>(root: &'a ast::Root<'b>) -> Vec<AnyTTreeIssue<'a, 'b
 
 fn verify_root<'a, 'b>(root: &'a ast::Root<'b>, issues: &mut Vec<AnyTTreeIssue<'a, 'b>>) {
     for child in &root.children {
-        if let ast::AnyText::Bracketed(bracketed) = child {
+        if let ast::AnyInline::Bracketed(bracketed) = child {
             verify_bracketed(bracketed, issues);
             continue;
         }
-        if let ast::AnyText::Delimited(delimited) = child {
+        if let ast::AnyInline::Delimited(delimited) = child {
             verify_delimited(delimited, issues);
             continue;
         }
-        if let ast::AnyText::InlineVerbatim(verbatim) = child {
+        if let ast::AnyInline::InlineVerbatim(verbatim) = child {
             verify_verbatim(verbatim, issues);
-            continue;
-        }
-        if let ast::AnyText::HTMLWrap(wrap) = child {
-            verify_root(&wrap.wrapped, issues);
             continue;
         }
     }

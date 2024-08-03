@@ -18,6 +18,7 @@ pub mod ansi {
     pub const DEFAULT_TEXT_STYLE: &str = "\x1b[22m";
 }
 
+// TODO: Deprecate and remove. Needless allocation. See use sites.
 pub fn pad(text: &str, max_len: usize) -> String {
     assert!(text.len() <= max_len);
     let mut padded = text.to_string();
@@ -26,3 +27,4 @@ pub fn pad(text: &str, max_len: usize) -> String {
     }
     return padded;
 }
+

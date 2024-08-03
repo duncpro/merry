@@ -1,52 +1,32 @@
-//! This module provides a facility for performing simple AST rewrites. These kind
+//! This module provides a facility for performing simple *CTree* rewrites. These kind
 //! of rewrites are usually conducted as a consequence of a directive invocation.
 //! 
 //! However, for more complex rewrite, it may be easier and more effecient to implement 
 //! a specialized suite of traversal routines instead of using the general-purpose facilities 
 //! provided here.
 
-use crate::ttree;
+use crate::ctree;
 
-pub fn rewrite_ttree(root: &mut ttree::ast::Root, 
-    rewrite_node: &mut impl FnMut(&mut ttree::ast::AnyText)) 
-{
-    for child in &mut root.children {
-        (rewrite_node)(child);
-        match child {
-            ttree::ast::AnyText::Delimited(node) => 
-                rewrite_ttree(&mut node.child_root, rewrite_node),
-            ttree::ast::AnyText::Bracketed(node) => 
-                rewrite_ttree(&mut node.child_root, rewrite_node),
-            ttree::ast::AnyText::HTMLWrap(node) => 
-                rewrite_ttree(&mut node.wrapped, rewrite_node),
-            ttree::ast::AnyText::Plain(_) => {},
-            ttree::ast::AnyText::InlineVerbatim(_) => {},
-            ttree::ast::AnyText::ImplicitSpace(_) => {},
-        }
-    }
-}
-
-use crate::mtree::ast::BlockChild;
-
-pub fn rewrite_mtree<'a>(node: &mut BlockChild<'a>, 
-    rewrite_node: &mut impl FnMut(&mut BlockChild<'a>)) 
+pub fn rewrite_subtree<'a>(node: &mut ctree::BlockChild<'a>, 
+    rewrite_node: &mut impl FnMut(&mut ctree::BlockChild<'a>))
 {
     (rewrite_node)(node);
+
     match node {
-        BlockChild::Block(block) => {
+        ctree::BlockChild::Block(block) => {
             for child in &mut block.children { 
-                rewrite_mtree(child, rewrite_node);
+                rewrite_subtree(child, rewrite_node);
             }
         },
-        BlockChild::Section(section) => {
+        ctree::BlockChild::Section(section) => {
             for child in &mut section.children { 
-                rewrite_mtree(child, rewrite_node);
+                rewrite_subtree(child, rewrite_node);
             }
         },
-        BlockChild::List(list) => {
+        ctree::BlockChild::List(list) => {
             for element in &mut list.elements {
                 for child in &mut element.content.children {
-                    rewrite_mtree(child, rewrite_node);
+                    rewrite_subtree(child, rewrite_node);
                 }
             }
         },
@@ -54,3 +34,39 @@ pub fn rewrite_mtree<'a>(node: &mut BlockChild<'a>,
     }
 }
 
+pub fn rewrite_subtrees<'a>(container: &mut impl ctree::Container<'a>, 
+    rewrite_node: &mut impl FnMut(&mut ctree::BlockChild<'a>))
+{
+    for child in container.children_mut() {
+        rewrite_subtree(child, rewrite_node);
+    }
+}
+
+pub fn rewrite_subtree_inline<'a>(node: &mut ctree::AnyInline<'a>, 
+    rewrite_node: &mut impl FnMut(&mut ctree::AnyInline<'a>)) 
+{
+    (rewrite_node)(node);
+    let maybe_root = match node {
+        ctree::AnyInline::Hyperlink (child_node) => Some(&mut child_node.child_root),
+        ctree::AnyInline::Emboldened(child_node) => Some(&mut child_node.child_root),
+        ctree::AnyInline::Italicized(child_node) => Some(&mut child_node.child_root),
+        ctree::AnyInline::Underlined(child_node) => Some(&mut child_node.child_root),
+        ctree::AnyInline::TaggedSpan(child_node) => Some(&mut child_node.child_root),
+        ctree::AnyInline::Plain(_) => None,
+        ctree::AnyInline::ImplicitSpace(_) => None,
+        ctree::AnyInline::InlineVerbatim(_) => None,
+    };
+    if let Some(root) = maybe_root {
+        for child_node in &mut root.children {
+            rewrite_subtree_inline(child_node, rewrite_node);
+        }
+    }
+}
+
+pub fn rewrite_inline_root<'a>(root: &mut ctree::InlineRoot<'a>,
+    rewrite_node: &mut impl FnMut(&mut ctree::AnyInline<'a>))
+{
+    for child_node in &mut root.children {
+        rewrite_subtree_inline(child_node, rewrite_node);
+    }
+}

@@ -27,7 +27,7 @@ pub fn test_make_mtree() {
     let ltree = make_ltree(&source);
     let mut mtree = make_mtree(&ltree);
     let mut issues2: Vec<Issue> = Vec::new();
-    apply_builtin_directives(&mut mtree.child, &mut issues2);
+    apply_builtin_directives(&mut mtree.block, &mut issues2);
     let issues = verify_mtree(&mtree);
     for issue in issues {
         print_issue(&issue.into(), "tests/invocation.md2");

@@ -3,7 +3,7 @@
 //! memory. 
 //! 
 //! For every line in the source text there is a node in the *LTree*. Specifically, for every
-//! *contentful lines*, there is a [`ast::Line`] node. And for every blank line, there is a
+//! contentful line, there is a [`ast::Line`] node. And for every blank line, there is a
 //! [`ast::VerticalSpace`] node.
 //! 
 //! However, unlike the flat source text, a document's *LTree* groups these lines together into
