@@ -104,9 +104,10 @@ open output.html
     achieved using two language features. Namely, qualified spans, and directives.
 
     ```md2
-    [Google]{1} is the most popular search engine, but I prefer DuckDuckGo myself.
+    [Google]{1} is the most popular search engine, but I prefer [DuckDuckGo]{2} myself.
     
     | href 1 https://google.com
+    | href 2 https://duckduckgo.com
     ````
 
     The `href` directive expands all spans which are qualified with a given tag into hyperlinks
