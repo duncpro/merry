@@ -162,3 +162,23 @@ open output.html
     into the finished file.
 
     The external process should produce valid HTML.
+
+## TODO (in order of importance)
+- Section break syntax. Currently, there is no way to break a section once its started
+  other than using the implicit section break, that is, the break implied by the
+  next heading. This is a huge problem since it makes sections unreachable
+  by directives as the directives are executed in the scope of the child section
+  not the parent. However if we can break to an ancestor explicitly, this problem
+  will be solved.
+- We should not crash the compiler if a `rewrite` fails due to an error contacting
+  the external process. We should still do a best-effort compilation and present
+  a nice error message showing exactly which `rewrite` invocation failed.
+- Collect std error from external process and make a nice error message with
+  the stderr output, and a source quote of the directive invocaion containing
+  the command which generated the stderr output.
+- Figure out how we're going to do images. Probably through another directive,
+  perhaps called `embed`?
+- Implement the `make` directive, which executes an external process and replaces
+  the directive invocation with the HTML output of that process. This will be useful
+  for generating plots/graphs on-demand during the compilation process by running
+  an external file.
