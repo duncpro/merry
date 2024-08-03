@@ -114,3 +114,29 @@ open output.html
     pointing to a given url.
 
     There is no way to write a hyperlink inline like in Markdown.
+
+- Code Blocks
+
+    In Merry the triple backtick block is a generic escaped block of text called a *verbatim*.
+    By default verbatims are rendered similarly to paragraphs. The only difference being that
+    one can use symbols that would otherwise have a special meaning, such as asterisks, tildes,
+    etc. However, like bracketed spans, *verbatims* can be qualified with tags. The builtin `m`
+    tag will rewrite the verbatim to be a generic monospace code block.
+
+    ````md2
+    ```
+    println!("Hello World");    
+    ```{m}
+    ````
+
+- Inline Code
+
+    In Merry the backtick span is a generic escaped block of text called an *inline verbatim*.
+    By default these are rendered just like any other text. The only difference being that
+    one can use symbols that would otherwise have a special meaning, such as asterisks, tildes, etc.
+    However, *inline verbatims* can be qualified with tags. The builtin `m` tag will rewrite
+    the inline verbatim to be a generic monospace code span.
+
+    ```md2
+    Consider using `std::mem::swap` instead of cloning when possible.
+    ```
