@@ -3,7 +3,13 @@ use crate::{ctree, report::Issue};
 pub fn codegen<'a, W>(root: &ctree::Root<'a>, out: &mut W, issues: &mut Vec<Issue<'a>>) -> std::io::Result<()>
 where W: std::io::Write
 {
-    codegen_block(&root.block, out, issues)
+    write!(out, "<!DOCTYPE html>")?;
+    write!(out, "<html>")?;
+    write!(out, "<head>")?;
+    write!(out, "</head>")?;
+    codegen_block(&root.block, out, issues)?;
+    write!(out, "</html>")?;
+    return Ok(());
 }
 
 pub fn codegen_node<'a, W>(any_node: &ctree::BlockChild<'a>, out: &mut W, issues: &mut Vec<Issue<'a>>)
@@ -19,7 +25,7 @@ pub fn codegen_node<'a, W>(any_node: &ctree::BlockChild<'a>, out: &mut W, issues
         ctree::BlockChild::Heading      (node) => codegen_heading(node, out, issues),
         ctree::BlockChild::CodeSnippet  (node) => codegen_code_snippet(node, out),
         ctree::BlockChild::ThematicBreak(node) => codegen_thematic_break(node, out),
-        ctree::BlockChild::None              => Ok(()),
+        ctree::BlockChild::None                => Ok(()),
     }
 }
 
@@ -83,9 +89,11 @@ pub fn codegen_list<'a, W>(list: &ctree::List<'a>, out: &mut W, issues: &mut Vec
 pub fn codegen_block<'a, W>(block: &ctree::Block<'a>, out: &mut W, issues: &mut Vec<Issue<'a>>) 
 -> std::io::Result<()> where W: std::io::Write
 {
+    if block.indent { write!(out, "<div style=\"margin-left: 15px\">")?; }
     for child in &block.children {
         codegen_node(child, out, issues)?;
     }
+    if block.indent { write!(out, "</div>")?; }
     return Ok(())
 }
 

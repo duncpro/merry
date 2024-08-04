@@ -99,7 +99,10 @@ pub struct Paragraph<'a> { pub content: InlineRoot<'a> }
 pub struct CodeSnippet<'a> { pub lines: Vec<SourceSpan<'a>> }
 
 #[derive(Default, Debug)]
-pub struct Block<'a> { pub children: Vec<BlockChild<'a>> }
+pub struct Block<'a> { 
+    pub children: Vec<BlockChild<'a>>,
+    pub indent: bool
+}
 
 #[derive(Debug)]
 pub struct ThematicBreak;
@@ -163,6 +166,17 @@ impl<'a> BlockChild<'a> {
 #[derive(Debug)]
 pub struct ListElement<'a> { pub content: Block<'a> }
 
+pub trait Writable<'a>: std::fmt::Debug {
+    /// Writes this entire `Writable` to `out`. 
+    ///
+    /// As the implementor of this trait is likely the only object which knows exactly
+    /// *why* this node appears in the tree, it is *its responsibility* to package any
+    /// IO errors which occur into an `Issue`. For instance, the implementor likely
+    /// knows which directive invocation produced this node, and also the node which
+    /// was originally taggged/rewritten (if any).
+    fn write(&self, out: &mut dyn std::io::Write, issues: &mut Vec<Issue<'a>>);
+}
+
 // # Interpret *MTree*
 
 pub struct Context<'a, 'b> { issues: &'b mut Vec<Issue<'a>> }
@@ -205,9 +219,7 @@ fn interpret_mtree_node<'a, 'b>(ctree_parent: &mut impl Container<'a>,
         mtree::ast::BlockChild::Invoke(mtree_i) => {
             interpret_invocation(ctree_parent, mtree_i, ctx);
         }
-        mtree::ast::BlockChild::ExplicitSectionClose(_) => {
-            ctree_parent.children_mut().push(BlockChild::ThematicBreak(ThematicBreak));
-        },
+        mtree::ast::BlockChild::ExplicitSectionClose(_) => {},
     }
 }
 
@@ -260,12 +272,14 @@ fn interpret_mtree_section<'a, 'b>(ast_s: mtree::ast::Section<'a>, ctx: &mut Con
 {
     let mut ctree_section: Section<'a> = Section {
         heading: interpret_mtree_heading(ast_s.heading),
-        children: Vec::new()
+        children: Vec::new(),
     };
-    
+
     for ast_child in ast_s.children {
         interpret_mtree_node(&mut ctree_section, ast_child, ctx);
-     }
+    }
+
+    mark_section_ambiguities(&mut ctree_section);
 
     return ctree_section;
 }
@@ -360,13 +374,54 @@ fn make_tags<'a>(ast_node: Option<ttree::ast::TrailingQualifier<'a>>)
     return tags;    
 }
 
-pub trait Writable<'a>: std::fmt::Debug {
-    /// Writes this entire `Writable` to `out`. 
-    ///
-    /// As the implementor of this trait is likely the only object which knows exactly
-    /// *why* this node appears in the tree, it is *its responsibility* to package any
-    /// IO errors which occur into an `Issue`. For instance, the implementor likely
-    /// knows which directive invocation produced this node, and also the node which
-    /// was originally taggged/rewritten (if any).
-    fn write(&self, out: &mut dyn std::io::Write, issues: &mut Vec<Issue<'a>>);
+fn mark_section_ambiguities<'a>(section: &mut Section<'a>) {
+    // We need to look for instances where a section is followed by a non-section.
+    // If we find such an instance, we surround the previous consecutive sections in
+    // a block.
+    let mut i: usize = 0;
+    while i < section.children.len() {
+        if !matches!(section.children[i], BlockChild::Section(_)) {
+            let mut k: usize = i;
+            loop {
+                if k == 0 { break; }
+                if !matches!(section.children[k - 1], BlockChild::Section(_)) { break; }
+                k -= 1;
+            }
+            let drained: Vec<BlockChild> = section.children.drain(k..i).collect();
+            i -= drained.len();
+            if drained.len() > 0 {
+                 let block = Block { children: drained, indent: true };
+                section.children.insert(k, BlockChild::Block(block));
+            }            
+        }
+        i += 1;
+    }
 }
+
+
+    // There is no need to disambiguate prev it if section break last in the list.
+    // There is no need to disambiguate it if we are a section.
+    
+    // We take the perspective of the element just passed the 
+    // explicit section close. 
+
+    // How do we know we are that element? 
+
+    /*
+    if let Some(j) = explicitly_resumed_at {
+        if j < ctree_section.children.len() {
+            if !matches!(ctree_section.children[j], BlockChild::Section(_)) {
+                // This boolean thing is wrong.
+                // First things first we need to move this into 
+                // the for loop above, because this can actually happen
+                // multiple times. Anyway, when this happens,
+                // we need to go up through the children beginning
+                // at j and going in reverse, that is towards zero.
+                // We need to capture all consecutive sections and 
+                // group them together into some kind of indented
+                // block.
+                ctree_section.ambiguous_extent = true;
+            }
+        }
+    }*/
+

@@ -163,19 +163,47 @@ open output.html
 
     The external process should produce valid HTML.
 
+- Structure
+
+    Merry is more rigidly structured than markdown. A heading is not just a heading,
+    but it is the beginning of a new section. A subsequent heading with more pounds
+    will be a new nested section. A subsequent heading with less pounds will break the
+    previous section and return to an ancestor.
+
+    The compiler will emit semantic HTML section tags around these sections. This makes the 
+    finished document easy for audio screen readers and web scrapers to analyze.
+
+    Sometimes, it can be useful to break out of a section into an ancestor but not
+    begin a new section there. Perhaps, you'd rather just place a subsequent paragraph
+    in the ancestor. This can be accomplished by using the explicit section return syntax.
+
+    ```md2
+    ### My Subtopic
+    My introduction to my subtopic.
+    
+    #### Example
+    My example
+
+    <<<
+    My Subtopic is resumed here.
+    ```
+
+    The backtick line is the explicit section return. The number of backticks determines
+    the target section. The number of backticks should equal the number of pounds preceeding
+    the target section. In this example, we return to "My Subtopic" which has three pounds,
+    so we put three backticks to match.
+
+    The Merry compiler produces a visually unambiguous finished HTML document. 
+    Specifically, when the hierarchy of the finished document can not be visually inferred from
+    the size of the headings alone, like in this example, the compiler will use indentation
+    to disambiguate. In the aforementioned code sample, the "Example" section will be rendered
+    with some left margin.
+
+    The compiler applies margin to sections only when it is necessary for disambiguation.
+
+    
+    
 ## TODO (in order of importance)
-- Section break syntax. Currently, there is no way to break a section once its started
-  other than using the implicit section break, that is, the break implied by the
-  next heading. This is a huge problem since it makes sections unreachable
-  by directives as the directives are executed in the scope of the child section
-  not the parent. However if we can break to an ancestor explicitly, this problem
-  will be solved.
-- We should not crash the compiler if a `rewrite` fails due to an error contacting
-  the external process. We should still do a best-effort compilation and present
-  a nice error message showing exactly which `rewrite` invocation failed.
-- Collect std error from external process and make a nice error message with
-  the stderr output, and a source quote of the directive invocaion containing
-  the command which generated the stderr output.
 - Figure out how we're going to do images. Probably through another directive,
   perhaps called `embed`?
 - Implement the `make` directive, which executes an external process and replaces
