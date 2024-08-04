@@ -101,6 +101,9 @@ pub struct CodeSnippet<'a> { pub lines: Vec<SourceSpan<'a>> }
 #[derive(Default, Debug)]
 pub struct Block<'a> { pub children: Vec<BlockChild<'a>> }
 
+#[derive(Debug)]
+pub struct ThematicBreak;
+
 /// An arbitrary piece of HTML which will be embedded into the finished document during the 
 /// code-generation phase.
 #[derive(Debug)]
@@ -116,6 +119,7 @@ pub enum BlockChild<'a> {
     HTML(HTML<'a>),
     Heading(Heading<'a>),
     CodeSnippet(CodeSnippet<'a>),
+    ThematicBreak(ThematicBreak),
     None
 }
 
@@ -201,6 +205,9 @@ fn interpret_mtree_node<'a, 'b>(ctree_parent: &mut impl Container<'a>,
         mtree::ast::BlockChild::Invoke(mtree_i) => {
             interpret_invocation(ctree_parent, mtree_i, ctx);
         }
+        mtree::ast::BlockChild::ExplicitSectionClose(_) => {
+            ctree_parent.children_mut().push(BlockChild::ThematicBreak(ThematicBreak));
+        },
     }
 }
 

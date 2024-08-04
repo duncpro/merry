@@ -10,16 +10,23 @@ pub fn codegen_node<'a, W>(any_node: &ctree::BlockChild<'a>, out: &mut W, issues
 -> std::io::Result<()> where W: std::io::Write
 {
     match any_node {
-        ctree::BlockChild::Verbatim   (node) => codegen_verbatim_block(node, out),
-        ctree::BlockChild::Section    (node) => codegen_section(node, out, issues),
-        ctree::BlockChild::List       (node) => codegen_list(node, out, issues),
-        ctree::BlockChild::Block      (node) => codegen_block(node, out, issues),
-        ctree::BlockChild::Paragraph  (node) => codegen_paragraph(node, out, issues),
-        ctree::BlockChild::HTML       (node) => codegen_html_block(node, out, issues),
-        ctree::BlockChild::Heading    (node) => codegen_heading(node, out, issues),
-        ctree::BlockChild::CodeSnippet(node) => codegen_code_snippet(node, out),
+        ctree::BlockChild::Verbatim     (node) => codegen_verbatim_block(node, out),
+        ctree::BlockChild::Section      (node) => codegen_section(node, out, issues),
+        ctree::BlockChild::List         (node) => codegen_list(node, out, issues),
+        ctree::BlockChild::Block        (node) => codegen_block(node, out, issues),
+        ctree::BlockChild::Paragraph    (node) => codegen_paragraph(node, out, issues),
+        ctree::BlockChild::HTML         (node) => codegen_html_block(node, out, issues),
+        ctree::BlockChild::Heading      (node) => codegen_heading(node, out, issues),
+        ctree::BlockChild::CodeSnippet  (node) => codegen_code_snippet(node, out),
+        ctree::BlockChild::ThematicBreak(node) => codegen_thematic_break(node, out),
         ctree::BlockChild::None              => Ok(()),
     }
+}
+
+pub fn codegen_thematic_break<'a, W>(_node: &ctree::ThematicBreak, out: &mut W) 
+-> std::io::Result<()> where W: std::io::Write
+{
+    write!(out, "<hr/>")   
 }
 
 pub fn codegen_code_snippet<'a, W>(snippet: &ctree::CodeSnippet<'a>, out: &mut W)
@@ -50,7 +57,9 @@ pub fn codegen_section<'a, W>(section: &ctree::Section<'a>, out: &mut W, issues:
 -> std::io::Result<()> where W: std::io::Write
 {
     write!(out, "<section>")?;
-    codegen_heading(&section.heading, out, issues)?;
+    write!(out, "<h1>")?;
+    codegen_inline_root(&section.heading.content, out, issues)?;
+    write!(out, "</h1>")?;
     for child in &section.children { codegen_node(child, out, issues)?; }
     write!(out, "</section>")?;
     return Ok(());

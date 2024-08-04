@@ -39,8 +39,12 @@ pub mod ast {
         Block(Block<'a>),
         List(List<'a>),
         VerbatimBlock(VerbatimBlock<'a>),
-        Section(Section<'a>)
+        Section(Section<'a>),
+        ExplicitSectionClose(ExplicitSectionClose<'a>)
     }
+
+    #[derive(Debug)]
+    pub struct ExplicitSectionClose<'a> { pub target_hlevel: usize, pub span: SourceSpan<'a> }
 
     #[derive(Debug)]
     pub struct List<'a> {
@@ -83,7 +87,7 @@ pub mod ast {
     }
 }
 
-use crate::{ltree, assert_matches};
+use crate::{ltree, assert_matches, scanner};
 use crate::report::{Issue, AnnotatedSourceSection, Severity};
 use crate::scan::{SourceSpan, SourceLocation};
 use crate::ttree::{self, verify_ttree, AnyTTreeIssue, parse_ttree};
@@ -92,6 +96,13 @@ pub fn make_mtree<'a, 'b>(ltree: &'a ltree::ast::Root<'b>) -> ast::Root<'b> {
     let mut block = make_block(&ltree.block);
     sectionize_block(&mut block, 0);
     return ast::Root { block }
+}
+
+scanner! {
+    explicit_section_close () |cursor| {
+        if cursor.repeat_match_symbol("<") == 0 { return false; }
+        return cursor.is_end();
+    }   
 }
 
 fn make_block<'a, 'b>(ltree_block: &'a ltree::ast::Block<'b>) -> ast::Block<'b> {
@@ -119,6 +130,12 @@ fn make_block<'a, 'b>(ltree_block: &'a ltree::ast::Block<'b>) -> ast::Block<'b> 
                 push_paragraph!();
                 let node = parse_directive_invocation(line);
                 mtree_children.push(ast::BlockChild::Invoke(node));
+                continue;
+            }
+            if let Some(span) = line.line_content.begin().match_scan(explicit_section_close()) {
+                push_paragraph!();
+                let node = ast::ExplicitSectionClose { target_hlevel: span.as_ref().len(), span };
+                mtree_children.push(ast::BlockChild::ExplicitSectionClose(node));
                 continue;
             }
             paragraph_lines.push(line.line_content);
@@ -228,7 +245,9 @@ fn sectionize_block<'a, 'b>(block: &'a mut ast::Block<'b>, hlevel_lb: usize) {
     let mut i: usize = 0;
     while i < block.children.len() {
         if let ast::BlockChild::Heading(next_heading) = &block.children[i] {
-            if next_heading.hlevel > hlevel_lb { sectionize(block, i); }
+            if next_heading.hlevel > hlevel_lb { 
+                sectionize(block, i); 
+            }
             // Otherwise,
             // This is an implicit section break, however we cannot break out
             // to this extent as the section is an ancestor to the current block. 
@@ -261,6 +280,11 @@ fn sectionize<'a, 'b>(block: &'a mut ast::Block<'b>, pos: usize) {
                 sectionize_block(&mut element.content, section_heading.hlevel);
             }
         }
+        if let ast::BlockChild::ExplicitSectionClose(explicit_close) = &block.children[i] {
+            if section_heading.hlevel > explicit_close.target_hlevel {
+                break;
+            }
+        }
         children.push(block.children.remove(i));
     }
 
@@ -274,7 +298,7 @@ pub struct UnstructuredDocumentWarning<'a, 'b> {
 
 pub enum AnyMTreeIssue<'a, 'b> {
     AnyTTreeIssue(AnyTTreeIssue<'a, 'b>),
-    UnstructuredDocumentWarning(UnstructuredDocumentWarning<'a, 'b>)
+    UnstructuredDocumentWarning(UnstructuredDocumentWarning<'a, 'b>),
 }
 
 impl<'a, 'b> From<AnyMTreeIssue<'a, 'b>> for Issue<'b> {
