@@ -89,7 +89,7 @@ pub fn codegen_list<'a, W>(list: &ctree::List<'a>, out: &mut W, issues: &mut Vec
 pub fn codegen_block<'a, W>(block: &ctree::Block<'a>, out: &mut W, issues: &mut Vec<Issue<'a>>) 
 -> std::io::Result<()> where W: std::io::Write
 {
-    if block.indent { write!(out, "<div style=\"margin-left: 15px\">")?; }
+    if block.indent { write!(out, "<div style=\"margin-left: 20px\">")?; }
     for child in &block.children {
         codegen_node(child, out, issues)?;
     }
