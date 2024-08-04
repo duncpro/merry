@@ -398,30 +398,3 @@ fn mark_section_ambiguities<'a>(section: &mut Section<'a>) {
     }
 }
 
-
-    // There is no need to disambiguate prev it if section break last in the list.
-    // There is no need to disambiguate it if we are a section.
-    
-    // We take the perspective of the element just passed the 
-    // explicit section close. 
-
-    // How do we know we are that element? 
-
-    /*
-    if let Some(j) = explicitly_resumed_at {
-        if j < ctree_section.children.len() {
-            if !matches!(ctree_section.children[j], BlockChild::Section(_)) {
-                // This boolean thing is wrong.
-                // First things first we need to move this into 
-                // the for loop above, because this can actually happen
-                // multiple times. Anyway, when this happens,
-                // we need to go up through the children beginning
-                // at j and going in reverse, that is towards zero.
-                // We need to capture all consecutive sections and 
-                // group them together into some kind of indented
-                // block.
-                ctree_section.ambiguous_extent = true;
-            }
-        }
-    }*/
-
