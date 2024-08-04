@@ -12,7 +12,7 @@ fn main() -> std::io::Result<()> {
         println!("Usage: merryc <source file>");
         return Ok(());
     };
-    println!("{}#{} merryc {}v{}{} is compiling {}\"{}\"{}...", ansi::BOLD, ansi::DEFAULT_TEXT_STYLE,
+    println!("{}#{} merryc {}v{}{} is compiling {}\"{}\"{}...", ansi::BOLD, ansi::STOP_BOLD,
         ansi::FG_GREY, env!("CARGO_PKG_VERSION"), ansi::FG_DEFAULT,
         ansi::FG_GREY, input_file, ansi::FG_DEFAULT);
     
@@ -26,23 +26,23 @@ fn main() -> std::io::Result<()> {
 
     let ctree = make_ctree(mtree, &mut issues);
     
-    issues.sort_by_key(|issue| issue.quote.first_line_no);
-    for (i, issue) in issues.iter().enumerate() { 
-        print!("{}. ", i + 1);
-        print_issue(issue, input_file); 
-    }
-    
     let output_file_path = args.get(2).map(|a| a.as_str()).unwrap_or("out.html");
     let mut output = std::fs::OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(true)
         .open(output_file_path)?;
-    codegen_html::codegen(&ctree, &mut output)?;
+    codegen_html::codegen(&ctree, &mut output, &mut issues)?; // TODO: Catch this error!    
 
-    println!("{}##{} compilation finished with {}{}{} issues.", ansi::BOLD, ansi::DEFAULT_TEXT_STYLE,
+    println!("{}##{} compilation finished with {}{}{} issues.", ansi::BOLD, ansi::STOP_BOLD,
         ansi::FG_GREY, issues.len(), ansi::FG_DEFAULT);
     println!();
+    
+    issues.sort_by_key(|issue| issue.quote.first_line_no);
+    for (i, issue) in issues.iter().enumerate() { 
+        print!("{}. ", i + 1);
+        print_issue(issue, input_file); 
+    }
     
     return Ok(());
 }

@@ -14,7 +14,6 @@
 //! text as there are many cases where the source text can be copied verbatim into the finished document.
 
 use crate::builtins::builtin_directives;
-use crate::misc::Writable;
 use crate::misc::remove_first;
 use crate::report::Issue;
 use crate::scan::SourceSpan;
@@ -74,7 +73,7 @@ pub struct TaggedSpan<'a> { pub child_root: InlineRoot<'a>, pub tags: Vec<Source
 pub struct InlineCodeSnippet<'a> { pub inner_spans: Vec<SourceSpan<'a>> }
 
 #[derive(Debug)]
-pub struct InlineHTML<'a> { pub value: Box<dyn Writable + 'a> }
+pub struct InlineHTML<'a> { pub value: Box<dyn Writable<'a> + 'a> }
 
 // # Block Elements
 
@@ -105,7 +104,7 @@ pub struct Block<'a> { pub children: Vec<BlockChild<'a>> }
 /// An arbitrary piece of HTML which will be embedded into the finished document during the 
 /// code-generation phase.
 #[derive(Debug)]
-pub struct HTML<'a> { pub value: Box<dyn Writable + 'a> }
+pub struct HTML<'a> { pub value: Box<dyn Writable<'a> + 'a> }
 
 #[derive(Debug)]
 pub enum BlockChild<'a> {
@@ -352,4 +351,15 @@ fn make_tags<'a>(ast_node: Option<ttree::ast::TrailingQualifier<'a>>)
         }
     }
     return tags;    
+}
+
+pub trait Writable<'a>: std::fmt::Debug {
+    /// Writes this entire `Writable` to `out`. 
+    ///
+    /// As the implementor of this trait is likely the only object which knows exactly
+    /// *why* this node appears in the tree, it is *its responsibility* to package any
+    /// IO errors which occur into an `Issue`. For instance, the implementor likely
+    /// knows which directive invocation produced this node, and also the node which
+    /// was originally taggged/rewritten (if any).
+    fn write(&self, out: &mut dyn std::io::Write, issues: &mut Vec<Issue<'a>>);
 }

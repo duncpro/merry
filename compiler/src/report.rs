@@ -105,7 +105,7 @@ impl<'a> AnnotatedSourceSection<'a> {
     }
 }
 
-fn print_quote(quote: &AnnotatedSourceSection, highlight_color: &'static str) {
+fn print_src_quote(quote: &AnnotatedSourceSection) {
     let quote_text = &quote.source[quote.first_line_begin_bpos..quote.last_line_end_bpos];
     let line_no_len = (quote.last_line_no + 1).to_string().len();
     
@@ -130,12 +130,12 @@ fn print_quote(quote: &AnnotatedSourceSection, highlight_color: &'static str) {
         let mut stdout_handle = std::io::stdout().lock();
         for byte in line_text.bytes() {
             if let Some(highlight) = quote.highlights.get(&byte_pos) {
-                stdout_handle.write_all(highlight_color.as_bytes()).unwrap();
+                stdout_handle.write_all(UNDERLINE.as_bytes()).unwrap();
                 stop_highlight_at = Some(byte_pos + highlight.byte_length);
             }
             if let Some(stop_pos) = stop_highlight_at {
                 if stop_pos == byte_pos { 
-                    stdout_handle.write_all(BG_DEFAULT.as_bytes()).unwrap();
+                    stdout_handle.write_all(STOP_UNDERLINE.as_bytes()).unwrap();
                     stop_highlight_at = None;
                 }
             }
@@ -144,7 +144,7 @@ fn print_quote(quote: &AnnotatedSourceSection, highlight_color: &'static str) {
         }
         if let Some(stop_pos) = stop_highlight_at {
             if stop_pos == byte_pos {
-                stdout_handle.write_all(BG_DEFAULT.as_bytes()).unwrap();
+                stdout_handle.write_all(STOP_UNDERLINE.as_bytes()).unwrap();
                 stop_highlight_at = None;
             }
         }
@@ -154,7 +154,7 @@ fn print_quote(quote: &AnnotatedSourceSection, highlight_color: &'static str) {
         line_no += 1;
         byte_pos += 1; // TODO WindowsLinebreaks
     }
-    println!("{}", BG_DEFAULT);
+    print!("{}", STOP_BOLD);
 
     if line_no < quote.last_line_no {
         println!("and {} more line(s)...", quote.last_line_no - line_no);
@@ -176,25 +176,53 @@ pub struct Issue<'a> {
     pub title: &'static str,
     pub subtext: &'static str,
     pub severity: Severity,
+    pub elaborations: Vec<Elaboration<'a>>
 }
 
 pub fn print_issue<'a>(issue: &Issue<'a>, source_name: &str) {    
     print!("{}", BOLD);
     match issue.severity {
-        Severity::Error => print!("{}Error{}: ", FG_RED, FG_DEFAULT),
-        Severity::Warning => print!("{}Warning{}: ", FG_YELLOW, FG_DEFAULT),
+        Severity::Error => print!("{}(Error) {}{} ", FG_RED, issue.title, FG_DEFAULT),
+        Severity::Warning => print!("{}(Warning) {}{} ", FG_YELLOW, issue.title, FG_DEFAULT),
     }
-    print!("{}", issue.title);
-    print!("{}", DEFAULT_TEXT_STYLE);
+    print!("{}", STOP_BOLD);
     println!();
     println!("{}", issue.subtext);
 
     println!();
     println!("at {}:{}", source_name, issue.quote.first_line_no + 1);
-    let highlight_color = match issue.severity {
-        Severity::Error => BG_RED,
-        Severity::Warning => BG_YELLOW,
-    };
-    print_quote(&issue.quote, highlight_color);
+    print_src_quote(&issue.quote);
     println!();
+
+    for elaboration in &issue.elaborations {
+        match elaboration {
+            Elaboration::SourceQuote(quote) => {
+                println!("{}", quote.caption);
+                println!();
+                println!("at {}:{}", source_name, quote.content.first_line_no + 1);
+                print_src_quote(&quote.content);
+            },
+            Elaboration::Quote(quote) => {
+                println!("{}", quote.caption);
+                println!();
+                println!("{}{}{}", FG_GREY, quote.content, FG_DEFAULT);
+            },
+        }
+        println!();
+    }
+}
+
+pub enum Elaboration<'a> {
+    SourceQuote(SourceQuoteElaboration<'a>),
+    Quote(QuoteElaboration)
+}
+
+pub struct QuoteElaboration {
+    pub content: String,
+    pub caption: &'static str
+}
+
+pub struct SourceQuoteElaboration<'a> {
+    pub content: AnnotatedSourceSection<'a>,
+    pub caption: &'static str
 }

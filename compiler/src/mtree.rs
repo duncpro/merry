@@ -297,7 +297,8 @@ impl<'a, 'b> From<UnstructuredDocumentWarning<'a, 'b>> for Issue<'b> {
             subtext: "The target ancestor exists outside the current block. \
                       Increase the heading level until \nit is at least greater than \
                       that of the section immediately enclosing the current block.",
-            severity: Severity::Warning
+            severity: Severity::Warning,
+            elaborations: Vec::new()
         }
     }
 }

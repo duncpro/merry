@@ -487,6 +487,7 @@ impl<'a, 'b> From<InsufficientIndentWarning<'a, 'b>> for Issue<'b> {
             title: "Too few spaces before block lines",
             subtext: "Conventionally, a block's indent is exactly three greater than its parent's.",
             severity: Severity::Warning,
+            elaborations: Vec::new()
         }
     }
 }
@@ -504,6 +505,7 @@ impl<'a, 'b> From<ExcessiveIndentWarning<'a, 'b>> for Issue<'b> {
             title: "Too many spaces before block lines",
             subtext: "Conventionally, a block's indent is exactly three greater than its parent's.",
             severity: Severity::Warning,
+            elaborations: Vec::new()
         }
     }
 }
@@ -519,7 +521,8 @@ impl<'a> From<ExcessiveVerticalSpaceWarning<'a>> for Issue<'a> {
             quote,
             title: "Too many blank separator lines",
             subtext: "A lesser number of linebreaks has equivalent interpretation.",
-            severity: Severity::Warning
+            severity: Severity::Warning,            
+            elaborations: Vec::new()
         }
     }
 }
@@ -537,6 +540,7 @@ impl<'a, 'b> From<AbruptChildBlockWarning<'a, 'b>> for Issue<'b> {
             title: "Missing blank separator line",
             subtext: "Conventionally, a child block is seperated from its parent by a blank line.",
             severity: Severity::Warning,
+            elaborations: Vec::new()
         }
     }
 }
@@ -552,6 +556,7 @@ impl<'a, 'b> From<VerbatimUnderindentedWarning<'a, 'b>> for Issue<'b> {
             title: "Backtick block contains under-indented lines",
             subtext: "The lines in a backtick block should begin at the same level as the declarator.",
             severity: Severity::Warning,
+            elaborations: Vec::new()
         }
     }
 }
@@ -566,6 +571,7 @@ impl<'a, 'b> From<UnclosedVerbatimError<'a, 'b>> for Issue<'b> {
             subtext: "This backtick block should end with a closing declarator matching the \
                       opening declarator.",
             severity: Severity::Error,
+            elaborations: Vec::new()
         }
     }
 }
@@ -579,7 +585,8 @@ impl<'a, 'b> From<LongVerbatimCloseWarning<'a, 'b>> for Issue<'b> {
             quote,
             title: "Too many closing backticks",
             subtext: "The number of closing backticks should equal the number of opening backticks.",
-            severity: Severity::Warning
+            severity: Severity::Warning,            
+            elaborations: Vec::new()
         }
     }
 }

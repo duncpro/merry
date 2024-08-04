@@ -425,6 +425,7 @@ impl<'a, 'b> From<SplitTagError<'a, 'b>> for Issue<'b> {
             title: "Trailing qualifier tag is split",
             subtext: "A tag cannot be split over a linebreak or contain spaces.",
             severity: Severity::Error,
+            elaborations: Vec::new()
         }
     }
 }
@@ -437,7 +438,8 @@ impl<'a, 'b> From<UnclosedDelimiterError<'a, 'b>> for Issue<'b> {
             quote,
             title: "Delimited text span is never closed",
             subtext: "There is no closing delimiter for the span opened here...",
-            severity: Severity::Error
+            severity: Severity::Error,
+            elaborations: Vec::new()
         }
     }
 }
@@ -450,7 +452,8 @@ impl<'a, 'b> From<UnclosedBracketError<'a, 'b>> for Issue<'b> {
             quote,
             title: "Bracketed text span is never closed",
             subtext: "There is no closing bracket for the span opened here...",
-            severity: Severity::Error
+            severity: Severity::Error,
+            elaborations: Vec::new()
         }
     }
 }
@@ -464,7 +467,8 @@ impl<'a, 'b> From<LongVerbatimCloseWarning<'a, 'b>> for Issue<'b> {
             quote,
             title: "Too many closing backticks",
             subtext: "The number of closing backticks should equal the number of opening backticks.",
-            severity: Severity::Warning
+            severity: Severity::Warning,
+            elaborations: Vec::new()
         }
     }
 }
@@ -479,7 +483,8 @@ impl<'a, 'b> From<UnclosedTrailingQualifierError<'a, 'b>> for Issue<'b> {
             quote,
             title: "Trailing qualifier is never closed",
             subtext: "There is no closing bracket for the qualifier opened here.",
-            severity: Severity::Error
+            severity: Severity::Error,
+            elaborations: Vec::new()
         }
     }
 }

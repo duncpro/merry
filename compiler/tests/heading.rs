@@ -27,6 +27,5 @@ pub fn test_make_mtree() {
     for issue in issues {
         print_issue(&issue.into(), "tests/heading.md2");
     }
-    println!("{:#?}", mtree);
 }
 

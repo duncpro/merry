@@ -15,7 +15,9 @@ pub mod ansi {
     pub const BG_RED: &str = "\x1b[41m";
     pub const BG_YELLOW: &str = "\x1b[43m";
     pub const BOLD: &str = "\x1b[1m";
-    pub const DEFAULT_TEXT_STYLE: &str = "\x1b[22m";
+    pub const UNDERLINE: &str = "\x1b[4m";
+    pub const STOP_BOLD: &str = "\x1b[22m";
+    pub const STOP_UNDERLINE: &str = "\x1b[24m";
 }
 
 // TODO: Deprecate and remove. Needless allocation. See use sites.
@@ -44,6 +46,18 @@ pub fn remove_first<T>(vec: &mut Vec<T>, pred: impl Fn(&T) -> bool) -> Option<T>
     return None;
 }
 
-pub trait Writable: std::fmt::Debug {
-    fn write(&self, out: &mut dyn std::io::Write) -> std::io::Result<()>;
+/// The `req` macros make early-returns more concise.
+#[macro_export]
+macro_rules! req {
+    ($result:expr, |$err:ident| $on_err:block) => {
+        match $result {
+            Ok(value) => value,
+            Err(err) => {
+                let $err = err;
+                return $on_err;
+            }
+        }
+    };
+    
+    ($p:pat, $v:expr) => { let $p = $v else { return; }; }
 }
