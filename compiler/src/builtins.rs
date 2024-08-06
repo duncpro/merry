@@ -20,6 +20,7 @@ pub fn builtin_directives<'a, 'b, C>(invocation: DirectiveInvocation<'a>, scope:
         match cmd {
             "href" => apply_href(invocation.take_args(), scope, ctx),
             "rewrite" => apply_rewrite(invocation.take_args(), scope, ctx), 
+            "make" => apply_make(invocation.take_args(), scope, ctx),
             _ => ()
         }
     }
@@ -51,7 +52,7 @@ fn apply_rewrite<'a, 'b, C>(args: Vec<SourceSpan<'a>>, scope: &mut C, ctx: &mut 
 where C: Container<'a>
 {
     let Some(tag) = args.get(0) else { /* TODO: Issue */ return; };
-    let Some(external_cmd) = args.get(1) else { return; };
+    let Some(external_cmd) = args.get(1) else { /* TODO: Issue */ return; };
 
     rewrite_subtrees(scope, &mut |node| {
         let BlockChild::Verbatim(verbatim) = node else { return; };
@@ -89,7 +90,7 @@ where C: Container<'a>
 
 
 #[derive(Debug)]
-pub struct ExternalRewriter<'a> {
+struct ExternalRewriter<'a> {
     pub src: Vec<SourceSpan<'a>>,
     pub external_args: Vec<SourceSpan<'a>>,
     pub external_cmd: SourceSpan<'a>,
@@ -156,6 +157,7 @@ impl<'a> Writable<'a> for ExternalRewriter<'a> {
                 });
             }
         }
+        
         if let Some(mut stdout) = process.stdout.take() {
             req!(std::io::copy(&mut stdout, out), |err| { 
                 let mut quote = AnnotatedSourceSection::from_span(&self.verbatim_tag);
@@ -211,7 +213,7 @@ impl<'a> Writable<'a> for ExternalRewriter<'a> {
             quote.highlight(self.verbatim_tag.begin.byte_pos, self.verbatim_tag.end.byte_pos);
             issues.push(Issue { 
                 quote,
-                title: "Failed to wait for external process to finish.",
+                title: "Cannot confirm completion of external process.",
                 subtext: "The verbatim tagged here could not be rewritten because an error\n\
                           ocurred while piping the process' stdout into the finished document.\n\
                           The document is now likely malformed, or at least incomplete.", 
@@ -228,8 +230,107 @@ impl<'a> Writable<'a> for ExternalRewriter<'a> {
                 ]
             });
         });
-    }
-    
+    } 
 }
 
+fn apply_make<'a, 'b, C>(args: Vec<SourceSpan<'a>>, scope: &mut C, ctx: &mut Context<'a, 'b>) 
+where C: Container<'a>
+{
+    let Some(external_cmd) = args.get(0).cloned() else { /* TODO: Issue */ return; };
+    let external_args = Vec::from(&args[1..]);
 
+    let value: Box<dyn Writable<'a> + 'a> = Box::new(Synthesizer { external_cmd, external_args });
+    scope.children_mut().push(BlockChild::HTML(HTML { value }));
+}
+
+#[derive(Debug)]
+struct Synthesizer<'a> {
+    pub external_args: Vec<SourceSpan<'a>>,
+    pub external_cmd: SourceSpan<'a>,
+}
+
+impl<'a> Writable<'a> for Synthesizer<'a> {
+    fn write(&self, out: &mut dyn std::io::Write, issues: &mut Vec<Issue<'a>>) {
+        let mut command = Command::new(self.external_cmd.as_ref()); 
+        for external_arg in &self.external_args {
+            command.arg(external_arg.as_ref());
+        }  
+        command.stdin(Stdio::piped());
+        command.stdout(Stdio::piped());
+        command.stderr(Stdio::piped());
+        
+        let mut process = req!(command.spawn(), |err| {
+            let quote = AnnotatedSourceSection::from_span(&self.external_cmd);
+            issues.push(Issue { 
+                quote, 
+                title: "Failed to start external process", 
+                subtext: "The content represented by this directive invocation will not be included\n\
+                          in the finished document becuase the external process could not be executed.", 
+                severity: Severity::Error, 
+                elaborations: vec![
+                    Elaboration::Quote(QuoteElaboration {
+                        caption: "The following error occurred after invoking the external command",
+                        content: err.to_string()
+                    }),
+                ] 
+            });
+        });
+
+        if let Some(mut stdout) = process.stdout.take() {
+            req!(std::io::copy(&mut stdout, out), |err| { 
+                let quote = AnnotatedSourceSection::from_span(&self.external_cmd);
+                 issues.push(Issue { 
+                    quote,
+                    title: "Failed to pipe external process output into finished document.",
+                    subtext: "The finished document will likely be malformed, or at least incomplete.", 
+                    severity: Severity::Error,
+                    elaborations: vec![
+                        Elaboration::Quote(QuoteElaboration {
+                            caption: "The following error occurred while piping from the external process...",
+                            content: err.to_string()
+                        }),
+                    ]
+                });
+            });
+        }
+
+        if let Some(mut stderr) = process.stderr.take() {
+            let mut error_text = String::new();
+            stderr.read_to_string(&mut error_text); // TODO
+            if error_text.len() > 0 {
+                let quote = AnnotatedSourceSection::from_span(&self.external_cmd);
+                issues.push(Issue { 
+                    quote,
+                    title: "An external error occurred during synthesis",
+                    subtext: "The external process logged an error while synthesizing the content\n\
+                              represented by this \"make\". The finished document will likely by\n\
+                              incomplete or malformed.",
+                    severity: Severity::Warning,
+                    elaborations: vec![
+                        Elaboration::Quote(QuoteElaboration {
+                            caption: "The process logged the following error...",
+                            content: error_text
+                        }),
+                    ]
+                });
+            }
+        }
+
+        req!(process.wait(), |err| {
+            let quote = AnnotatedSourceSection::from_span(&self.external_cmd);
+            issues.push(Issue { 
+                quote,
+                title: "Cannot confirm successful completion of external process.",
+                subtext: "This \"make\" invocation might not have been expanded correctly.\n\
+                          The finished document might be incomplete or malformed.", 
+                severity: Severity::Error,
+                elaborations: vec![
+                    Elaboration::Quote(QuoteElaboration {
+                        caption: "The following error occurred while waiting for the process...",
+                        content: err.to_string()
+                    }),
+                ]
+            });
+        });
+    }
+}
