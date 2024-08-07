@@ -17,7 +17,7 @@ Compiler for my markdown-esque markup language.
 
 ```
 git clone https://github.com/duncpro/merry
-git cd merry
+cd merry/compiler
 cargo build --release
 ```
 
