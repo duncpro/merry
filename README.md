@@ -188,10 +188,10 @@ open output.html
     My Subtopic is resumed here.
     ```
 
-    The backtick line is the explicit section return. The number of backticks determines
+    The `<<<` line is the explicit section return. The number of backarrows determines
     the target section. The number of backticks should equal the number of pounds preceeding
     the target section. In this example, we return to "My Subtopic" which has three pounds,
-    so we put three backticks to match.
+    so we put three backarrows to match.
 
     The Merry compiler produces a visually unambiguous finished HTML document. 
     Specifically, when the hierarchy of the finished document can not be visually inferred from
