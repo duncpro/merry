@@ -20,7 +20,7 @@ pub fn builtin_directives<'a, 'b, C>(invocation: DirectiveInvocation<'a>, scope:
         match cmd {
             "href" => apply_href(invocation.take_args(), scope, ctx),
             "rewrite" => apply_rewrite(invocation.take_args(), scope, ctx), 
-            "make" => apply_make(invocation.take_args(), scope, ctx),
+            "embed" => apply_embed(invocation.take_args(), scope, ctx),
             _ => ()
         }
     }
@@ -233,7 +233,7 @@ impl<'a> Writable<'a> for ExternalRewriter<'a> {
     } 
 }
 
-fn apply_make<'a, 'b, C>(args: Vec<SourceSpan<'a>>, scope: &mut C, ctx: &mut Context<'a, 'b>) 
+fn apply_embed<'a, 'b, C>(args: Vec<SourceSpan<'a>>, scope: &mut C, ctx: &mut Context<'a, 'b>) 
 where C: Container<'a>
 {
     let Some(external_cmd) = args.get(0).cloned() else { /* TODO: Issue */ return; };
@@ -303,7 +303,7 @@ impl<'a> Writable<'a> for Synthesizer<'a> {
                     quote,
                     title: "An external error occurred during synthesis",
                     subtext: "The external process logged an error while synthesizing the content\n\
-                              represented by this \"make\". The finished document will likely by\n\
+                              represented by this \"embed\". The finished document will likely by\n\
                               incomplete or malformed.",
                     severity: Severity::Warning,
                     elaborations: vec![

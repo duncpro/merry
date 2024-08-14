@@ -204,11 +204,5 @@ open output.html
     
     
 ## TODO (in order of importance)
-- Figure out how we're going to do images. Probably through another directive,
-  perhaps called `embed`?
-- Implement the `make` directive, which executes an external process and replaces
-  the directive invocation with the HTML output of that process. This will be useful
-  for generating plots/graphs on-demand during the compilation process by running
-  an external file.
 - More lints.
 - Study parser combinators and rewrite the parser using them maybe.
