@@ -7,7 +7,9 @@ where W: std::io::Write
     write!(out, "<html>")?;
     write!(out, "<head>")?;
     write!(out, "</head>")?;
+    write!(out, "<body>")?;
     codegen_block(&root.block, out, issues)?;
+    write!(out, "</body>")?;
     write!(out, "</html>")?;
     return Ok(());
 }
