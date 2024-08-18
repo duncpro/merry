@@ -241,7 +241,8 @@ where C: Container<'a>
     let Some(external_cmd) = args.get(0).cloned() else { /* TODO: Issue */ return; };
     let external_args = Vec::from(&args[1..]);
 
-    let value: Box<dyn Writable<'a> + 'a> = Box::new(Synthesizer { external_cmd, external_args });
+    let value: Box<dyn Writable<'a> + 'a> = Box::new(Synthesizer { 
+        external_cmd, external_args, cwd: ctx.cwd.clone() });
     scope.children_mut().push(BlockChild::HTML(HTML { value }));
 }
 
@@ -249,6 +250,7 @@ where C: Container<'a>
 struct Synthesizer<'a> {
     pub external_args: Vec<SourceSpan<'a>>,
     pub external_cmd: SourceSpan<'a>,
+    pub cwd: std::path::PathBuf
 }
 
 impl<'a> Writable<'a> for Synthesizer<'a> {
@@ -260,6 +262,7 @@ impl<'a> Writable<'a> for Synthesizer<'a> {
         command.stdin(Stdio::piped());
         command.stdout(Stdio::piped());
         command.stderr(Stdio::piped());
+        command.current_dir(&self.cwd);
         
         let mut process = req!(command.spawn(), |err| {
             let quote = AnnotatedSourceSection::from_span(&self.external_cmd);
