@@ -179,11 +179,13 @@ pub trait Writable<'a>: std::fmt::Debug {
 
 // # Interpret *MTree*
 
-pub struct Context<'a, 'b> { issues: &'b mut Vec<Issue<'a>> }
+pub struct Context<'a, 'b> { pub issues: &'b mut Vec<Issue<'a>>, pub cwd: std::path::PathBuf }
 
-pub fn make_ctree<'a, 'b>(mtree: mtree::ast::Root<'a>, issues: &'b mut Vec<Issue<'a>>) -> Root<'a> 
+pub fn make_ctree<'a, 'b>(mtree: mtree::ast::Root<'a>, issues: &'b mut Vec<Issue<'a>>,
+     cwd: std::path::PathBuf)
+-> Root<'a> 
 {
-    let mut ctx = Context { issues };
+    let mut ctx = Context { issues, cwd };
     let block = interpret_mtree_block(mtree.block, &mut ctx);
     return Root { block }
 }

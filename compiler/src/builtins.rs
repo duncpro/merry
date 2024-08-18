@@ -65,7 +65,7 @@ where C: Container<'a>
         let external_args: Vec<SourceSpan<'a>> = Vec::from(&args[2..]);
         let external_cmd = external_cmd.clone();
         let rewriter: Box<dyn Writable<'a> + 'a> = Box::new(ExternalRewriter { 
-            src, external_cmd, external_args, verbatim_tag });
+            src, external_cmd, external_args, verbatim_tag, cwd: ctx.cwd.clone() });
         *node = BlockChild::HTML(HTML { value: rewriter });
     });
 
@@ -82,7 +82,7 @@ where C: Container<'a>
             let external_args: Vec<SourceSpan<'a>> = Vec::from(&args[2..]);
             let external_cmd = external_cmd.clone();
             let rewriter: Box<dyn Writable<'a> + 'a> = Box::new(ExternalRewriter { 
-                src, external_cmd, external_args, verbatim_tag });
+                src, external_cmd, external_args, verbatim_tag, cwd: ctx.cwd.clone() });
             *inline_node = AnyInline::HTML(InlineHTML { value: rewriter });
         });
     });
@@ -94,7 +94,8 @@ struct ExternalRewriter<'a> {
     pub src: Vec<SourceSpan<'a>>,
     pub external_args: Vec<SourceSpan<'a>>,
     pub external_cmd: SourceSpan<'a>,
-    pub verbatim_tag: SourceSpan<'a>
+    pub verbatim_tag: SourceSpan<'a>,
+    pub cwd: std::path::PathBuf
 }
 
 impl<'a> Writable<'a> for ExternalRewriter<'a> {
@@ -107,6 +108,7 @@ impl<'a> Writable<'a> for ExternalRewriter<'a> {
         command.stdin(Stdio::piped());
         command.stdout(Stdio::piped());
         command.stderr(Stdio::piped());
+        command.current_dir(&self.cwd);
 
         let mut process = req!(command.spawn(), |err| {
             let mut quote = AnnotatedSourceSection::from_span(&self.verbatim_tag);

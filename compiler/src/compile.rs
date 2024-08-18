@@ -49,7 +49,9 @@ pub fn compile_file(input_file: std::path::PathBuf, output_file: std::path::Path
     for issue in verify_ltree(&ltree) { issues.push(issue.into()) }
     for issue in verify_mtree(&mtree) { issues.push(issue.into()) }
 
-    let ctree = make_ctree(mtree, &mut issues);
+    let mut cwd = input_file.clone();
+    cwd.pop();
+    let ctree = make_ctree(mtree, &mut issues, cwd);
     
     let mut output = std::fs::OpenOptions::new()
         .write(true)
