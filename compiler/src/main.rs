@@ -1,47 +1,25 @@
-use merry_compiler::ctree::make_ctree;
-use merry_compiler::report::{Issue, print_issue};
-use merry_compiler::mtree::{make_mtree, verify_mtree};
-use merry_compiler::ltree::{make_ltree, verify_ltree};
-use merry_compiler::misc::ansi;
-use merry_compiler::codegen_html;
+use std::path::PathBuf;
+
+use clap::Parser;
+use merry_compiler::compile::{compile_dir, compile_file};
+
+#[derive(Parser)]
+pub struct Cli {
+    input_path: PathBuf,
+    output_path: PathBuf
+}
 
 fn main() -> std::io::Result<()> {
-    let args: Vec<String> = std::env::args().collect();
-    let Some(input_file) = args.get(1) else {
-        println!("No input file given.");
-        println!("Usage: merryc <source file>");
+    let cli = Cli::parse();
+    
+    if cli.input_path.is_dir() {
+        compile_dir(cli.input_path, cli.output_path)?;
         return Ok(());
-    };
-    println!("{}#{} merryc {}v{}{} is compiling {}\"{}\"{}...", ansi::BOLD, ansi::STOP_BOLD,
-        ansi::FG_GREY, env!("CARGO_PKG_VERSION"), ansi::FG_DEFAULT,
-        ansi::FG_GREY, input_file, ansi::FG_DEFAULT);
-    
-    let source_text = std::fs::read_to_string(input_file)?;
-    let ltree = make_ltree(&source_text);
-    let mtree = make_mtree(&ltree);
-    
-    let mut issues: Vec<Issue> = Vec::new();
-    for issue in verify_ltree(&ltree) { issues.push(issue.into()) }
-    for issue in verify_mtree(&mtree) { issues.push(issue.into()) }
+    }
 
-    let ctree = make_ctree(mtree, &mut issues);
-    
-    let output_file_path = args.get(2).map(|a| a.as_str()).unwrap_or("out.html");
-    let mut output = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .open(output_file_path)?;
-    codegen_html::codegen(&ctree, &mut output, &mut issues)?; // TODO: Catch this error!    
-
-    println!("{}##{} compilation finished with {}{}{} issues.", ansi::BOLD, ansi::STOP_BOLD,
-        ansi::FG_GREY, issues.len(), ansi::FG_DEFAULT);
-    println!();
-    
-    issues.sort_by_key(|issue| issue.quote.first_line_no);
-    for (i, issue) in issues.iter().enumerate() { 
-        print!("{}. ", i + 1);
-        print_issue(issue, input_file); 
+    if cli.input_path.is_file() {
+        compile_file(cli.input_path, cli.output_path)?;
+        return Ok(());
     }
     
     return Ok(());

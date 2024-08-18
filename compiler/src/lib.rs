@@ -8,3 +8,4 @@ pub mod codegen_html;
 pub mod rewrite;
 pub mod builtins;
 pub mod ctree;
+pub mod compile;

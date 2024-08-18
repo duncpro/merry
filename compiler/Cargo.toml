@@ -4,6 +4,7 @@ version = "0.1.0-wip"
 edition = "2021"
 
 [dependencies]
+clap = { version = "4.5.16", features = ["derive"] }
 unicode-segmentation = "1.11.0"
 unicode-width = "0.1.13"
 
