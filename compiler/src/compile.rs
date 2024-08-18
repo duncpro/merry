@@ -8,7 +8,7 @@ use crate::ltree::{make_ltree, verify_ltree};
 use crate::misc::ansi;
 use crate::{codegen_html, assert_matches};
 
-pub fn compile_dir(src_dir_path: PathBuf, dest_dir_path: PathBuf) -> std::io::Result<()> {
+pub fn compile_dir(src_dir_path: PathBuf, dest_dir_path: PathBuf, head: &Option<PathBuf>) -> std::io::Result<()> {
     std::fs::create_dir_all(&dest_dir_path)?;
 
     let contents = std::fs::read_dir(&src_dir_path)?;
@@ -18,7 +18,7 @@ pub fn compile_dir(src_dir_path: PathBuf, dest_dir_path: PathBuf) -> std::io::Re
         let mut nested_dest_dir_path = dest_dir_path.clone();
         nested_dest_dir_path.push(entry.file_name());
         if entry.file_type()?.is_dir() {
-            compile_dir(entry.path(), nested_dest_dir_path)?;
+            compile_dir(entry.path(), nested_dest_dir_path, head)?;
             continue;
         }
         if entry.file_type()?.is_file() {
@@ -26,7 +26,7 @@ pub fn compile_dir(src_dir_path: PathBuf, dest_dir_path: PathBuf) -> std::io::Re
                 if extension == "md2" {
                     let mut dest_file_path = nested_dest_dir_path.clone();
                     dest_file_path.set_extension(OsStr::new("html"));
-                    compile_file(entry.path(), dest_file_path)?;
+                    compile_file(entry.path(), dest_file_path, head)?;
                 }
             }
         }
@@ -34,7 +34,7 @@ pub fn compile_dir(src_dir_path: PathBuf, dest_dir_path: PathBuf) -> std::io::Re
     return Ok(())
 }
 
-pub fn compile_file(input_file: std::path::PathBuf, output_file: std::path::PathBuf)
+pub fn compile_file(input_file: std::path::PathBuf, output_file: std::path::PathBuf, head: &Option<PathBuf>)
 -> std::io::Result<()> 
 {
     println!("{}#{} merryc {}v{}{} is compiling {}\"{}\"{}...", ansi::BOLD, ansi::STOP_BOLD,
@@ -56,7 +56,7 @@ pub fn compile_file(input_file: std::path::PathBuf, output_file: std::path::Path
         .create(true)
         .truncate(true)
         .open(&output_file)?;
-    codegen_html::codegen(&ctree, &mut output, &mut issues)?; 
+    codegen_html::codegen(&ctree, &mut output, &mut issues, head)?; 
     println!("{}##{} compilation finished with {}{}{} issues.", ansi::BOLD, ansi::STOP_BOLD,
         ansi::FG_GREY, issues.len(), ansi::FG_DEFAULT);
     println!();

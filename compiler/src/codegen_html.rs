@@ -1,10 +1,17 @@
+use std::path::PathBuf;
+
 use crate::{ctree, report::Issue};
 
-pub fn codegen<'a, W>(root: &ctree::Root<'a>, out: &mut W, issues: &mut Vec<Issue<'a>>) -> std::io::Result<()>
+pub fn codegen<'a, W>(root: &ctree::Root<'a>, out: &mut W, issues: &mut Vec<Issue<'a>>, head: &Option<PathBuf>)
+-> std::io::Result<()>
 where W: std::io::Write
 {
     write!(out, "<!DOCTYPE html>")?;
     write!(out, "<html>")?;
+    if let Some(head_path) = head {
+        let mut head_file = std::fs::File::open(head_path)?;
+        std::io::copy(&mut head_file, out)?;
+    }
     write!(out, "<head>")?;
     write!(out, "</head>")?;
     write!(out, "<body>")?;
