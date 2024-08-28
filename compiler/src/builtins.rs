@@ -122,7 +122,7 @@ impl<'a> Writable<'a> for ExternalRewriter<'a> {
                 severity: Severity::Error, 
                 elaborations: vec![
                     Elaboration::SourceQuote(SourceQuoteElaboration { 
-                        caption: "This directive invocation was applied to the verbatim.",
+                        caption: "This directive invocation acted on the verbatim.",
                         content: AnnotatedSourceSection::from_span(&self.external_cmd)
                     }),
                     Elaboration::Quote(QuoteElaboration {

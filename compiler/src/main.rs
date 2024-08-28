@@ -13,14 +13,17 @@ pub struct Cli {
 
 fn main() -> std::io::Result<()> {
     let cli = Cli::parse();
+
+    let mut input_path = std::env::current_dir().unwrap();
+    input_path.push(&cli.input_path);
     
-    if cli.input_path.is_dir() {
-        compile_dir(cli.input_path, cli.output_path, &cli.head)?;
+    if input_path.is_dir() {
+        compile_dir(input_path, cli.output_path, &cli.head)?;
         return Ok(());
     }
 
-    if cli.input_path.is_file() {
-        compile_file(cli.input_path, cli.output_path, &cli.head)?;
+    if input_path.is_file() {
+        compile_file(input_path, cli.output_path, &cli.head)?;
         return Ok(());
     }
     
