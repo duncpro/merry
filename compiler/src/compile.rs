@@ -37,9 +37,10 @@ pub fn compile_dir(src_dir_path: PathBuf, dest_dir_path: PathBuf, head: &Option<
 pub fn compile_file(input_file: std::path::PathBuf, output_file: std::path::PathBuf, head: &Option<PathBuf>)
 -> std::io::Result<()> 
 {
+    let input_file_name = input_file.file_name().unwrap().to_str().unwrap();
     println!("{}#{} merryc {}v{}{} is compiling {}\"{}\"{}...", ansi::BOLD, ansi::STOP_BOLD,
         ansi::FG_GREY, env!("CARGO_PKG_VERSION"), ansi::FG_DEFAULT,
-        ansi::FG_GREY, input_file.display(), ansi::FG_DEFAULT);
+        ansi::FG_GREY, input_file_name, ansi::FG_DEFAULT);
     
     let source_text = std::fs::read_to_string(&input_file)?;
     let ltree = make_ltree(&source_text);
